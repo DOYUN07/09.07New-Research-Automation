@@ -118,7 +118,7 @@ exclude_keywords:
 # 5. 네트워크 설정 (보통 건드릴 일 없음)
 # -------------------------------------------------------------
 http:
-  timeout: 25          # 한 기관당 최대 대기 초
+  timeout: 30          # 한 기관당 최대 대기 초 (정부 사이트는 느릴 때가 많음)
   retries: 2           # 실패 시 재시도 횟수
   delay_between: 1.0   # 기관 간 요청 간격(초)
   user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"

@@ -35,34 +35,77 @@ def today_kst():
 # --------------------------------------------------------------- 수집
 
 
+RETRY_ROUND_WAIT = 45  # 접속 실패한 기관을 다시 시도하기 전 대기(초)
+
+
+def _try_one(session, inst: Institution, cfg: Config) -> tuple[list[Notice], str | None]:
+    """한 기관을 수집한다. (결과, 실패사유) 를 돌려준다."""
+    try:
+        text = fetch(session, inst, cfg)
+        notices = parse(text, inst, today_kst())
+        if not notices:
+            return [], "목록을 인식하지 못했습니다"
+        return notices, None
+    except FetchError as exc:
+        return [], str(exc)
+    except Exception as exc:  # noqa: BLE001
+        return [], f"{type(exc).__name__}: {exc}"
+
+
+def _is_network_error(reason: str) -> bool:
+    """다시 시도해볼 가치가 있는 실패인지 (일시적 차단·타임아웃 등)."""
+    marks = (
+        "Max retries",
+        "timed out",
+        "Timeout",
+        "Connection",
+        "ConnectionError",
+        "너무 짧습니다",
+        "HTTP 5",
+        "HTTP 429",
+        "HTTP 403",
+    )
+    return any(m in reason for m in marks)
+
+
 def collect(
     institutions: list[Institution], cfg: Config
 ) -> tuple[dict[str, list[Notice]], list[tuple[str, str]]]:
     session = make_session(cfg)
     raw: dict[str, list[Notice]] = {}
-    failed: list[tuple[str, str]] = []
+    reasons: dict[str, str] = {}
 
     for i, inst in enumerate(institutions):
         if i:
             time.sleep(cfg.delay_between)
-        try:
-            text = fetch(session, inst, cfg)
-            notices = parse(text, inst, today_kst())
-            if not notices:
-                failed.append((inst.name, "목록을 인식하지 못했습니다"))
-                raw[inst.id] = []
-                print(f"  [!] {inst.name}: 목록 인식 실패")
-                continue
-            raw[inst.id] = notices
+        notices, reason = _try_one(session, inst, cfg)
+        raw[inst.id] = notices
+        if reason:
+            reasons[inst.id] = reason
+            print(f"  [!] {inst.name}: {reason}")
+        else:
             print(f"  [+] {inst.name}: {len(notices)}건 수집")
-        except FetchError as exc:
-            failed.append((inst.name, str(exc)))
-            raw[inst.id] = []
-            print(f"  [!] {inst.name}: {exc}")
-        except Exception as exc:  # noqa: BLE001
-            failed.append((inst.name, f"{type(exc).__name__}: {exc}"))
-            raw[inst.id] = []
-            print(f"  [!] {inst.name}: {type(exc).__name__}: {exc}")
+
+    # 재시도 라운드 — 정부 부처 사이트들이 특정 IP를 한동안 막는 일이 잦다.
+    # 한 바퀴 다 돈 뒤 잠시 쉬었다가 접속 실패한 곳만 새 연결로 다시 시도한다.
+    retryable = [x for x in institutions if _is_network_error(reasons.get(x.id, ""))]
+    if retryable:
+        print(f"-- 접속 실패 {len(retryable)}곳, {RETRY_ROUND_WAIT}초 후 재시도합니다")
+        time.sleep(RETRY_ROUND_WAIT)
+        session2 = make_session(cfg)
+        for i, inst in enumerate(retryable):
+            if i:
+                time.sleep(cfg.delay_between * 2)
+            notices, reason = _try_one(session2, inst, cfg)
+            if not reason:
+                raw[inst.id] = notices
+                reasons.pop(inst.id, None)
+                print(f"  [+] {inst.name}: 재시도 성공 — {len(notices)}건")
+            else:
+                print(f"  [!] {inst.name}: 재시도도 실패 — {reason}")
+
+    names = {x.id: x.name for x in institutions}
+    failed = [(names[k], v) for k, v in reasons.items()]
     return raw, failed
 
 
@@ -153,6 +196,46 @@ def diagnose(include_disabled: bool = False, dump: bool = False) -> int:
         dump_dir.mkdir(parents=True, exist_ok=True)
 
     session = make_session(cfg)
+    results: dict[str, list[Notice]] = {}
+    reasons: dict[str, str] = {}
+
+    def attempt(sess, inst: Institution) -> None:
+        """수집을 시도하고, 목록 인식에 실패하면 원본 HTML을 남긴다."""
+        try:
+            text = fetch(sess, inst, cfg)
+        except Exception as exc:  # noqa: BLE001
+            results[inst.id] = []
+            reasons[inst.id] = f"{exc}"
+            return
+        notices = parse(text, inst, today)
+        results[inst.id] = notices
+        if notices:
+            reasons.pop(inst.id, None)
+        else:
+            reasons[inst.id] = "목록을 인식하지 못했습니다"
+            if dump:
+                (dump_dir / f"{inst.id}.html").write_text(text, encoding="utf-8")
+
+    for i, inst in enumerate(targets):
+        if i:
+            time.sleep(cfg.delay_between)
+        attempt(session, inst)
+        state = reasons.get(inst.id)
+        print(f"  [{'!' if state else '+'}] {inst.name}: {state or str(len(results[inst.id])) + '건'}")
+
+    # 재시도 라운드 — 정부 부처 사이트가 특정 IP를 한동안 막는 일이 잦아
+    # 접속 실패한 곳만 잠시 쉰 뒤 새 연결로 한 번 더 시도한다.
+    retryable = [x for x in targets if _is_network_error(reasons.get(x.id, ""))]
+    if retryable:
+        print(f"-- 접속 실패 {len(retryable)}곳, {RETRY_ROUND_WAIT}초 후 재시도합니다")
+        time.sleep(RETRY_ROUND_WAIT)
+        session2 = make_session(cfg)
+        for i, inst in enumerate(retryable):
+            if i:
+                time.sleep(cfg.delay_between * 2)
+            attempt(session2, inst)
+            print(f"  [재시도] {inst.name}: {reasons.get(inst.id) or str(len(results[inst.id])) + '건'}")
+
     lines = [
         f"# 기관별 수집 진단 — {today}",
         "",
@@ -164,37 +247,32 @@ def diagnose(include_disabled: bool = False, dump: bool = False) -> int:
     detail: list[str] = []
     ok = 0
 
-    for i, inst in enumerate(targets):
-        if i:
-            time.sleep(cfg.delay_between)
-        try:
-            text = fetch(session, inst, cfg)
-            notices = parse(text, inst, today_kst())
-            if not notices:
-                lines.append(f"| {inst.name} | ⚠️ | 0건 | — | 목록 인식 실패 |")
-                if dump:
-                    # 목록을 못 읽은 기관의 원본 HTML을 남겨 원인을 볼 수 있게 한다
-                    (dump_dir / f"{inst.id}.html").write_text(text, encoding="utf-8")
-                continue
-            ok += 1
-            dated = [n for n in notices if n.posted]
-            newest = max((n.posted for n in dated), default=None)
-            with_dl = sum(1 for n in notices if n.deadline)
+    for inst in targets:
+        notices = results.get(inst.id, [])
+        reason = reasons.get(inst.id)
+        if reason and "인식하지" in reason:
+            lines.append(f"| {inst.name} | ⚠️ | 0건 | — | 목록 인식 실패 |")
+            continue
+        if reason:
             lines.append(
-                f"| {inst.name} | ✅ | {len(notices)}건 | "
-                f"{newest or '날짜 미인식'} | 마감일 파싱 {with_dl}/{len(notices)} |"
+                f"| {inst.name} | ❌ | — | — | {reason.replace('|', '/')[:110]} |"
             )
-            detail.append(f"\n### {inst.name}\n")
-            detail.append(f"`{inst.url}`\n")
-            for n in notices[:3]:
-                detail.append(
-                    f"- {n.title}\n"
-                    f"  - 게시 `{n.posted}` / 마감 `{n.deadline}`\n"
-                    f"  - {n.url}\n"
-                )
-        except Exception as exc:  # noqa: BLE001
-            msg = str(exc).replace("|", "/")[:110]
-            lines.append(f"| {inst.name} | ❌ | — | — | {msg} |")
+            continue
+        ok += 1
+        newest = max((n.posted for n in notices if n.posted), default=None)
+        with_dl = sum(1 for n in notices if n.deadline)
+        lines.append(
+            f"| {inst.name} | ✅ | {len(notices)}건 | "
+            f"{newest or '날짜 미인식'} | 마감일 파싱 {with_dl}/{len(notices)} |"
+        )
+        detail.append(f"\n### {inst.name}\n")
+        detail.append(f"`{inst.url}`\n")
+        for n in notices[:3]:
+            detail.append(
+                f"- {n.title}\n"
+                f"  - 게시 `{n.posted}` / 마감 `{n.deadline}`\n"
+                f"  - {n.url}\n"
+            )
 
     lines.append("")
     lines.append(f"**정상 {ok}곳 / 점검 {len(targets)}곳**")
