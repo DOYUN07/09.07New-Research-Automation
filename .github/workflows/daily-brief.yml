@@ -1,0 +1,115 @@
+name: 매일 공고 브리핑
+
+on:
+  schedule:
+    # UTC 23:00 = 한국시간 08:00 (다음 날)
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "메일을 보내지 않고 결과만 확인"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-brief
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 브리핑 실행
+        env:
+          # ↓ GitHub Secrets 에 등록하면 발송이 켜집니다. 없으면 결과 파일만 만들고 넘어갑니다.
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          # ↓ 선택. 등록하면 config.yaml 의 recipients 대신 이 값을 씁니다 (쉼표 구분)
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          # ↓ 선택. 공공데이터포털 인증키. 나중에 추가해도 됩니다.
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+        run: |
+          python -m src.main ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: 결과 파일 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brief-${{ github.run_number }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: 발송 이력 커밋
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/seen.json
+          if git diff --staged --quiet; then
+            echo "변경 없음"
+          else
+            git commit -m "chore: 발송 이력 갱신 $(date -u +%Y-%m-%d)"
+            git push
+          finame: 기관 수집 진단
+
+# 34개 기관에 실제로 접속해서 목록이 제대로 읽히는지 점검합니다.
+# Actions 탭 → "기관 수집 진단" → Run workflow 로 수동 실행하세요.
+# 결과는 실행 로그에 바로 출력되고, Artifacts 의 diagnose-report 로도 내려받을 수 있습니다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_disabled:
+        description: "비활성(enabled:false) 기관까지 점검"
+        type: boolean
+        default: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 진단 실행
+        run: |
+          python -m src.main --diagnose ${{ inputs.include_disabled && '--all' || '' }}
+
+      - name: 요약을 실행 화면에 표시
+        if: always()
+        run: cat out/diagnose.md >> $GITHUB_STEP_SUMMARY || true
+
+      - name: 리포트 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnose-report
+          path: out/diagnose.md
+          retention-days: 30
+          if-no-files-found: ignore
+
