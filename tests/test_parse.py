@@ -183,6 +183,36 @@ def main() -> int:
     check("class에 down이 있어도 링크 유지", "/home/2-2/16921" in r[0].url, True)
     check("게시일", r[0].posted, date(2026, 9, 3))
 
+    # -------------------------------- 3차 실전 진단(2026-09-07)에서 발견된 문제들
+    print("\n[G] 행 안에 첨부파일 <li>가 있어도 인식 (중소벤처기업부)")
+    r = P(
+        fixtures.ROW_WITH_LI,
+        inst(
+            id="mss",
+            base="https://www.mss.go.kr",
+            link_from_onclick=r"doBbsFView\('\d+','(\d+)'",
+            detail_url="https://www.mss.go.kr/site/smba/ex/bbs/View.do?cbIdx=310&bcIdx={id}&parentSeq={id}",
+        ),
+    )
+    check("행 수", len(r), 3)
+    check(
+        "제목에 메타데이터가 안 붙음",
+        r[0].title,
+        "2026년 중소기업 스마트서비스 지원사업 참여기업 모집 공고(A/S지원)",
+    )
+    check("'담당부서' 미포함", "담당부서" in r[0].title, False)
+    check("게시일", r[0].posted, date(2026, 9, 7))
+    check("마감일=신청기간 종료", r[0].deadline, date(2026, 10, 6))
+    check("상세 URL", "bcIdx=1071012" in r[0].url, True)
+
+    print("\n[H] 행마다 감싸는 div가 따로 있어 형제가 아닌 목록 (부산시민운동지원센터)")
+    r = P(fixtures.WRAPPED_ROWS, inst(id="ng", base="https://www.ngocenter.or.kr/business/"))
+    check("행 수", len(r), 3)
+    check("제목", r[0].title, "[활동가커뮤니티지원사업] 든든 커뮤니티 큰모임 (9/12)")
+    check("게시일", r[0].posted, date(2026, 9, 2))
+    check("상대경로 결합", r[0].url, "https://www.ngocenter.or.kr/business/view?scti=0&no=2904")
+    check("헤더 행 제외", any("제목" == n.title for n in r), False)
+
     # ---------------------------------------------------------------- 필터
     print("\n[9] 필터 규칙")
     cfg = load_config()

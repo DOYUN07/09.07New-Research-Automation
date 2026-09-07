@@ -238,6 +238,66 @@ INSIDE_HEADER = """<html><body><header id="wrap">
       2026년 클라우드 바우처 지원사업 3차 공고</a></td><td>2026-08-11</td></tr>
 </tbody></table></header></body></html>"""
 
+# 중소벤처기업부형: 행(tr) 안에 첨부파일 <ul><li> 가 들어 있고,
+# 모바일용 <a> 가 제목 + 상세정보를 통째로 감싼다 (3차 진단에서 0건이던 원인)
+ROW_WITH_LI = """<html><body><div class="board_list"><table><tbody>
+<tr onclick="doBbsFView('310','1071012','16010100','1071012');"
+    title="2026년 중소기업 스마트서비스 지원사업 참여기업 모집 공고(A/S지원)">
+  <td>2192</td>
+  <td class="subject">
+    <a class="pc-detail" href="#view">2026년 중소기업 스마트서비스 지원사업 참여기업 모집 공고(A/S지원)</a>
+    <a class="mo-detail" href="#view">2026년 중소기업 스마트서비스 지원사업 참여기업 모집 공고(A/S지원)
+       담당부서 중소기업인공지능확산추진단 공고번호 제2026-540호 신청기간 2026-09-07 ~ 2026-10-06</a>
+    <div class="tableInfoBox">
+      <dl><dt>담당부서</dt><dd>중소기업인공지능확산추진단</dd></dl>
+      <dl><dt>신청기간</dt><dd>2026-09-07 ~ 2026-10-06</dd></dl>
+    </div>
+  </td>
+  <td class="attached-files">
+    <ul><li><a class="attach-file" href="#">붙임1_공고문.hwp</a></li>
+        <li><a class="attach-file" href="#">붙임2_신청서.hwp</a></li></ul>
+  </td>
+  <td>2026-09-07</td></tr>
+<tr onclick="doBbsFView('310','1070845','16010100','1070845');">
+  <td>2191</td>
+  <td class="subject">
+    <a class="pc-detail" href="#view">『중소기업 AX 우수사례 공모전』참가기업 모집 공고</a>
+    <div class="tableInfoBox"><dl><dt>신청기간</dt><dd>2026-09-01 ~ 2026-09-21</dd></dl></div>
+  </td>
+  <td class="attached-files"><ul><li><a class="attach-file" href="#">공고문.pdf</a></li></ul></td>
+  <td>2026-09-01</td></tr>
+<tr onclick="doBbsFView('310','1070800','16010100','1070800');">
+  <td>2190</td>
+  <td class="subject">
+    <a class="pc-detail" href="#view">2026년 스마트공장 클라우드 전환 지원사업 공고</a>
+    <div class="tableInfoBox"><dl><dt>신청기간</dt><dd>2026-08-28 ~ 2026-09-30</dd></dl></div>
+  </td>
+  <td class="attached-files"><ul><li><a class="attach-file" href="#">신청서.hwp</a></li></ul></td>
+  <td>2026-08-28</td></tr>
+</tbody></table></div></body></html>"""
+
+# 부산시민운동지원센터형: 행마다 감싸는 div가 따로 있어 형제가 아니다
+# (div.table_td > div.table_td_line — 3차 진단에서 0건이던 원인)
+WRAPPED_ROWS = """<html><body><div class="table_default type">
+<div class="table_th"><p class="list_num">번호</p><p class="list_subj">제목</p>
+  <p class="list_date">작성일</p></div>
+<div class="table_td"><div class="table_td_line">
+  <p class="list_num">884</p><p class="list_num"><b>네트워크 협력강화</b></p>
+  <p class="list_subj"><a href="./view?scti=0&amp;no=2904">
+    <span>[활동가커뮤니티지원사업] 든든 커뮤니티 큰모임 (9/12)</span></a></p>
+  <p class="list_date">2026-09-02</p></div></div>
+<div class="table_td"><div class="table_td_line">
+  <p class="list_num">883</p><p class="list_num"><b>시민운동 성장지원</b></p>
+  <p class="list_subj"><a href="./view?scti=0&amp;no=2903">
+    <span>[교육훈련지원사업] 똑똑 활동에 힘이 필요한 순간</span></a></p>
+  <p class="list_date">2026-09-02</p></div></div>
+<div class="table_td"><div class="table_td_line">
+  <p class="list_num">882</p><p class="list_num"><b>공론장</b></p>
+  <p class="list_subj"><a href="./view?scti=0&amp;no=2901">
+    <span>[이음] 정책숙의 공론장 지원사업 이음 참여 단체 모집</span></a></p>
+  <p class="list_date">2026-08-28</p></div></div>
+</div></body></html>"""
+
 # 게시일 컬럼이 아예 없는 게시판 (고령친화산업지원센터 센터공지 형태)
 NO_DATE = """<html><body><table class="tstyle_list"><tbody>
 <tr><td class="num">15</td><td class="ellipsis">

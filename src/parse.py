@@ -236,23 +236,41 @@ def looks_closed(row: Tag) -> bool:
 
 
 def _leaf_rows(soup: BeautifulSoup, tags: list[str]) -> list[Tag]:
+    """행 후보를 모은다.
+
+    '같은 종류가 안에 또 있으면 상위 행'이라고 판단한다. 예전에는 tr 안에 li가 있어도
+    상위 행으로 봤는데, 첨부파일 목록을 <ul><li>로 넣은 게시판(중소벤처기업부)의
+    모든 행이 그 규칙에 걸려 통째로 사라졌다. 그래서 '같은 태그'만 본다.
+    """
     rows = []
     for tag in soup.find_all(tags):
-        if tag.find(tags):
-            continue  # 중첩된 상위 행은 건너뜀
+        if tag.find(tag.name):
+            continue  # 같은 종류가 안에 또 있으면 상위 행이다
         if not tag.find("a"):
             continue
         rows.append(tag)
     return rows
 
 
+def _signature(row: Tag) -> str:
+    """행의 생김새. 부모가 달라도 같은 모양이면 한 목록으로 묶기 위한 것."""
+    return row.name + "." + ".".join(sorted(row.get("class") or []))
+
+
 def _best_group(rows_all: list[Tag]) -> list[Tag]:
-    groups: dict[int, list[Tag]] = {}
+    """행들을 묶는 방법 두 가지를 모두 시도해 점수가 높은 쪽을 고른다.
+
+    1) 같은 부모를 가진 형제끼리  — 표준적인 게시판
+    2) 태그+class 가 같은 것끼리 — 행마다 감싸는 div가 따로 있어 형제가 아닌 게시판
+       (부산시민운동지원센터: div.table_td > div.table_td_line 구조)
+    """
+    groups: dict[str, list[Tag]] = {}
     for row in rows_all:
-        parent = row.parent
-        if parent is None:
-            continue
-        groups.setdefault(id(parent), []).append(row)
+        if row.parent is not None:
+            groups.setdefault(f"p{id(row.parent)}", []).append(row)
+        sig = _signature(row)
+        if sig.count(".") > 0 and len(sig) > len(row.name) + 1:
+            groups.setdefault(f"c{sig}", []).append(row)
 
     best: list[Tag] = []
     best_score = -1.0
@@ -319,22 +337,14 @@ def _pick_title(row: Tag, inst: Institution) -> str:
                 return t
     anchors = row.find_all("a")
 
-    # 1차: 첨부파일 링크를 뺀 나머지 중 가장 긴 것
-    best = ""
-    for a in anchors:
-        t = _anchor_title(a)
-        if not t or _is_file_anchor(a, t):
-            continue
-        if len(t) > len(best):
-            best = t
+    # 1차: 첨부파일 링크를 뺀 나머지에서 고른다
+    cands = [t for a in anchors if (t := _anchor_title(a)) and not _is_file_anchor(a, t)]
+    best = _cleanest(cands)
 
     # 2차 안전장치: 전부 걸러졌다면 필터 없이 다시 고른다.
     # 판별이 과하게 걸려 제목을 통째로 잃는 사고를 막는다.
     if len(best) < 4:
-        for a in anchors:
-            t = _anchor_title(a)
-            if len(t) > len(best):
-                best = t
+        best = _cleanest([_anchor_title(a) for a in anchors])
 
     if len(best) < 4:
         # 링크 텍스트가 아이콘뿐인 경우 — 행에서 가장 긴 셀을 제목으로
@@ -343,6 +353,52 @@ def _pick_title(row: Tag, inst: Institution) -> str:
             if len(t) > len(best) and not find_dates(t):
                 best = t
     return best
+
+
+# 제목 뒤에 딸려오는 목록 메타데이터 라벨 — 여기서부터는 제목이 아니다
+_META_LABEL = re.compile(
+    r"\s+(담당부서|담당자|담당팀|공고번호|공고일자|신청기간|접수기간|모집기간|사업기간"
+    r"|등록일자?|작성일자?|게시일자?|조회수?|첨부파일)\s"
+)
+
+
+def _cut_meta(title: str) -> str:
+    """'…모집 공고 담당부서 OO과 공고번호 제2026-540호' 같은 꼬리를 잘라낸다.
+
+    모바일용 <a>가 제목과 상세정보를 통째로 감싸는 게시판(중소벤처기업부)이 있어,
+    그대로 두면 제목이 한 줄을 넘긴다.
+    """
+    if len(title) < 15:
+        return title
+    m = _META_LABEL.search(title)
+    if m and m.start() >= 10:
+        return title[: m.start()].strip()
+    return title
+
+
+def _cleanest(cands: list[str]) -> str:
+    """여러 후보 제목 중 가장 적절한 하나를 고른다.
+
+    A가 B의 앞부분이고 A가 말줄임(...)으로 끝나지 않는다면,
+    B는 A 뒤에 메타데이터가 붙은 것이므로 A를 쓴다.
+    반대로 A가 말줄임으로 끝나면 잘린 것이므로 긴 B를 쓴다.
+    """
+    cands = [_cut_meta(c) for c in cands if c]
+    if not cands:
+        return ""
+    kept = []
+    for b in cands:
+        shadowed = any(
+            a != b
+            and not a.rstrip().endswith(("...", "…"))
+            and b.startswith(a)
+            and len(b) > len(a) + 4
+            for a in cands
+        )
+        if not shadowed:
+            kept.append(b)
+    pool = kept or cands
+    return max(pool, key=len)
 
 
 def _pick_link(row: Tag, inst: Institution) -> str:
