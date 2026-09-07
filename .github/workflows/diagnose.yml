@@ -15,7 +15,7 @@ on:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
 
       - name: 진단 실행
         run: |
-          python -m src.main --diagnose ${{ inputs.include_disabled && '--all' || '' }}
+          python -m src.main --diagnose --dump ${{ inputs.include_disabled && '--all' || '' }}
 
       - name: 요약을 실행 화면에 표시
         if: always()
@@ -40,7 +40,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          # out/diagnose.md  진단 표
+          # out/html/*.html  목록 인식에 실패한 기관의 원본 HTML (원인 분석용)
           name: diagnose-report
-          path: out/diagnose.md
+          path: out/
           retention-days: 30
           if-no-files-found: ignore
