@@ -244,14 +244,17 @@ institutions:
 
   - id: socialenterprise
     name: 한국사회적기업진흥원
-    enabled: false
-    status: blocked
-    url: "https://www.socialenterprise.or.kr/social/board/list.do?m_cd=D019&board_code=BO02"
-    base: "https://www.socialenterprise.or.kr/social/board/"
+    enabled: true
+    status: check
+    url: "https://socialenterprise.or.kr/homepage/main.do"
+    base: "https://socialenterprise.or.kr"
     notes: >
-      엑셀의 '한국사회기술원'은 실존 명칭이 아니어서 이 기관으로 판단했으나,
-      1·2차 진단 모두 HTTP 404 → 게시판 주소가 바뀐 것으로 보여 비활성화.
-      정확한 공고 게시판 주소를 알려주시면 url만 바꿔 다시 켜면 됩니다.
+      엑셀의 '한국사회기술원'은 실존 명칭이 아니어서 이 기관으로 판단.
+      구 주소(/social/board/list.do)는 1·2차 진단 모두 HTTP 404 → 사용자가 알려준
+      새 주소로 교체. 다만 이것은 게시판이 아니라 메인 페이지이므로, 파서가
+      메인에 노출된 공지·공고 영역을 집어올 수 있고 배너·메뉴를 잘못 집을 수도 있다.
+      다음 진단에서 수집 건수와 샘플 제목을 확인할 것. 결과가 이상하면
+      메인에서 '알림·소식 > 공지사항' 게시판으로 들어간 실제 목록 주소로 바꿀 것.
 
   - id: ekr
     name: 한국농어촌공사
