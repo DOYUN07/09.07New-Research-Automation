@@ -126,7 +126,18 @@ def run(dry_run: bool = False) -> int:
     institutions = [x for x in all_inst if x.enabled and x.url]
     today = today_kst()
 
+    # 수신자를 어디서 읽었고 누구에게 갈 것인지 먼저 찍는다.
+    # 'config.yaml 에 추가했는데 메일이 안 온다'의 원인이 대부분 여기 있다.
     print(f"== 공고 브리핑 {today} (대상 {len(institutions)}개 기관) ==")
+    print(f"-- 수신자 출처: {cfg.recipients_source}")
+    if cfg.recipients:
+        for m in cfg.recipients:
+            print(f"     → {m}")
+    else:
+        print("     → (없음) 받는 사람이 지정되지 않았습니다")
+    bad = [m for m in cfg.recipients if "@" not in m or "." not in m.rsplit("@", 1)[-1]]
+    if bad:
+        print(f"   [!] 주소 형식이 이상합니다 (오타 확인): {', '.join(bad)}")
     raw, failed = collect(institutions, cfg)
 
     state = load_seen()

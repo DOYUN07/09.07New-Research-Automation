@@ -76,6 +76,9 @@ class Config:
     http: dict[str, Any] = field(default_factory=dict)
     sheet: dict[str, Any] = field(default_factory=dict)
 
+    # 수신자를 어디서 읽었는지 (로그 표시용, 설정 파일에 쓰는 값이 아님)
+    recipients_source: str = "config.yaml"
+
     @property
     def timeout(self) -> int:
         return int(self.http.get("timeout", 25))
@@ -102,10 +105,15 @@ def load_config(path: Path | None = None) -> Config:
     known = {f for f in Config.__dataclass_fields__}
     cfg = Config(**{k: v for k, v in raw.items() if k in known})
 
-    # 환경변수로 수신자를 덮어쓸 수 있음 (쉼표 구분). 비워두면 config.yaml 사용.
+    # MAIL_TO 시크릿이 있으면 config.yaml 의 recipients 를 '대체'한다.
+    # 이걸 모르면 config.yaml 에 주소를 추가해도 메일이 안 가서 한참 헤매게 되므로,
+    # 어느 쪽을 썼는지 항상 로그에 남긴다.
     env_to = os.environ.get("MAIL_TO", "").strip()
     if env_to:
         cfg.recipients = [x.strip() for x in env_to.split(",") if x.strip()]
+        cfg.recipients_source = "MAIL_TO 시크릿 (config.yaml 의 recipients 는 무시됨)"
+    else:
+        cfg.recipients_source = "config.yaml"
     return cfg
 
 
