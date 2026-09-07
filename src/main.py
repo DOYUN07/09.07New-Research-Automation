@@ -24,6 +24,7 @@ from .mailer import MailNotConfigured, is_configured, send
 from .parse import Notice, parse
 from .render import render_html, render_text
 from .store import load_seen, prune, record, save_seen, seen_keys
+from .verify import drop_expired, verify
 
 KST = ZoneInfo("Asia/Seoul")
 OUT = ROOT / "out"
@@ -150,13 +151,27 @@ def run(dry_run: bool = False) -> int:
     failed_ids = {n for n, _ in failed}
 
     for inst in institutions:
-        kept = apply_filters(raw.get(inst.id, []), cfg, today, known, stats)
-        grouped[inst.id] = kept
-        if not kept and inst.name not in failed_ids:
+        grouped[inst.id] = apply_filters(raw.get(inst.id, []), cfg, today, known, stats)
+
+    print(f"-- {stats.as_line()}")
+
+    # 마감일 확인 — 여기까지 살아남았지만 마감일을 모르는 공고만 상세 페이지를 열어본다.
+    # 게시판 목록에 마감일이 없는 기관이 많아, 이 단계가 없으면 끝난 공고가 그대로 나간다.
+    survivors = [n for v in grouped.values() for n in v]
+    survivors, vstats = verify(survivors, cfg, today, make_session(cfg))
+    if vstats.checked or vstats.skipped:
+        print(f"-- {vstats.as_line()}")
+
+    expired_total = 0
+    for inst in institutions:
+        grouped[inst.id], dropped = drop_expired(grouped[inst.id], cfg, today)
+        expired_total += dropped
+        if not grouped[inst.id] and inst.name not in failed_ids:
             empty.append(inst.name)
+    if expired_total:
+        print(f"-- 마감 확인되어 제외: {expired_total}건")
 
     total = sum(len(v) for v in grouped.values())
-    print(f"-- {stats.as_line()}")
 
     html_body = render_html(grouped, names, today, cfg, empty, failed, sheet_log)
     text_body = render_text(grouped, names, today, cfg)

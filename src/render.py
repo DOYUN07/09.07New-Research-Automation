@@ -51,7 +51,13 @@ def render_html(
         )
         for n in notices:
             flags = []
-            if n.deadline is None:
+            if n.note == "상시":
+                flags.append(
+                    '<span style="display:inline-block;padding:1px 6px;margin-left:6px;'
+                    'border:1px solid #555;color:#444;border-radius:3px;'
+                    'font-size:11px;vertical-align:middle;">상시모집</span>'
+                )
+            elif n.deadline is None:
                 flags.append(
                     '<span style="display:inline-block;padding:1px 6px;margin-left:6px;'
                     'border:1px solid #b45309;color:#b45309;border-radius:3px;'
@@ -82,7 +88,7 @@ def render_html(
 <td style="padding:11px 0;border-bottom:1px solid #eee;vertical-align:top;font:400 14px {FONT};">
   <a href="{_esc(n.url)}" style="color:#111;text-decoration:none;font-weight:500;">{_esc(n.title)}</a>{''.join(flags)}
   <div style="font-size:12px;color:#666;margin-top:4px;">
-    마감 {_fmt(n.deadline, '미표기')}{dd_html}
+    마감 {_fmt(n.deadline, '상시' if n.note == '상시' else '미표기')}{dd_html}
   </div>
   {kw_html}
 </td></tr>"""

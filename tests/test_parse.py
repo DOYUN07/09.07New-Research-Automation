@@ -10,6 +10,7 @@ from datetime import date
 from src.config import Institution, load_config, load_institutions
 from src.filters import FilterStats, apply_filters
 from src.parse import parse
+from src.verify import drop_expired as drop_expired_fn
 from tests import fixtures
 
 TODAY = date(2026, 9, 7)
@@ -446,6 +447,162 @@ def main() -> int:
     cfg4.sheet = {"enabled": False, "keywords_url": "kw"}
     _, log4 = S.apply_all(cfg4, load_institutions_for_test())
     check("로그 없음", log4, [])
+
+    # ---------------------------------------------------------------- 마감일 판정
+    print("\n[12] 마감일 읽기 — 실제 공고에서 쓰이는 표기들")
+    from src import deadline as DL
+
+    for text, want_dl, want_note in [
+        ("2026년 GHKOL 컨설팅 사업 공고 (~9.16.(수) 까지)", date(2026, 9, 16), ""),
+        ("에이지테크 시장확산 지원사업 모집 (~2026.9.30.)", date(2026, 9, 30), ""),
+        ("접수기간 : 2026.09.07 ~ 2026.09.30", date(2026, 9, 30), ""),
+        ("신청기간 2026-09-07 ~ 2026-10-06", date(2026, 10, 6), ""),
+        ("접수마감: 2026. 9. 30.(월) 18:00", date(2026, 9, 30), ""),
+        ("마감 2026-12-31 18:00", date(2026, 12, 31), ""),
+        ("2026년 9월 30일까지 신청", date(2026, 9, 30), ""),
+        ("입주기업 상시모집 공고(3차)", None, "상시"),
+        ("예산 소진 시까지 선착순 접수", None, "상시"),
+        ("2026년 1차 고령친화우수제품 지정 공고", None, ""),
+    ]:
+        check(f"'{text[:26]}…'", DL.from_text(text, TODAY), (want_dl, want_note))
+
+    print("\n[12-a2] 연도 없는 날짜의 해 추론 — 기준일에 가장 가까운 해를 고른다")
+    # 실제로 새어나간 공고: 9월에 받은 메일에 '(~4.24.(금))' 공고가 들어 있었다.
+    # 예전 규칙('과거면 내년')은 이걸 2027-04-24 로 보고 진행 중이라 판단했다.
+    slipped = (
+        "AI응용제품 신속 상용화(복지분야, 에이지테크 기반 고령친화사업 지원) "
+        "컨소시엄 모집 공고(~4.24.(금), 18:00)"
+    )
+    check("실제 새어나간 공고의 마감일", DL.from_text(slipped, TODAY)[0], date(2026, 4, 24))
+    check("→ 오늘보다 과거", DL.from_text(slipped, TODAY)[0] < TODAY, True)
+
+    # 기준일이 '오늘'일 때 (게시일 모르는 게시판) — 오늘과 가장 가까운 해
+    for ref, txt, want in [
+        (date(2026, 9, 7), "(~4.24.(금), 18:00)", date(2026, 4, 24)),
+        (date(2026, 9, 7), "(~9.16.(수) 까지)", date(2026, 9, 16)),
+        (date(2026, 12, 20), "(~1.15. 까지)", date(2027, 1, 15)),
+    ]:
+        check(f"오늘 {ref} · '{txt}'", DL.from_text(txt, ref)[0], want)
+
+    # 기준일이 '게시일'일 때 — 마감일은 게시일보다 앞설 수 없다
+    for ref, txt, want in [
+        (date(2026, 1, 5), "(~12.20. 까지)", date(2026, 12, 20)),
+        (date(2026, 4, 2), "(~4.24.(금))", date(2026, 4, 24)),
+        (date(2026, 12, 28), "(~1.15. 까지)", date(2027, 1, 15)),
+        (date(2026, 9, 5), "(~9.30.)", date(2026, 9, 30)),
+    ]:
+        check(
+            f"게시 {ref} · '{txt}'",
+            DL.from_text(txt, ref, anchor_is_posted=True)[0],
+            want,
+        )
+
+    print("\n[12-a3] 게시일을 알면 그걸 기준으로 해를 정한다")
+    html_old = """<html><body><table><tbody>
+      <tr><td>1</td><td><a href="/v?1">에이지테크 컨소시엄 모집 공고(~4.24.(금), 18:00)</a></td>
+          <td>2026-04-02</td></tr>
+      <tr><td>2</td><td><a href="/v?2">시니어 돌봄 실증 참여기업 모집(~9.30.)</a></td>
+          <td>2026-09-05</td></tr>
+      <tr><td>3</td><td><a href="/v?3">고령친화 우수제품 지정 공고</a></td>
+          <td>2026-09-01</td></tr>
+    </tbody></table></body></html>"""
+    r = P(html_old, inst(id="t3", base="https://example.com"))
+    check("게시일 기준 해 추론", r[0].deadline, date(2026, 4, 24))
+    check("두 번째 공고", r[1].deadline, date(2026, 9, 30))
+
+    print("\n[12-a4] 게시일이 없는 게시판에서도 마감된 공고는 걸러진다")
+    html_nodate = """<html><body><table class="tstyle_list"><tbody>
+      <tr><td>410</td><td><a href="/board/view?linkId=48942096">
+        AI응용제품 신속 상용화(복지분야) 컨소시엄 모집 공고(~4.24.(금), 18:00)</a></td>
+        <td>320</td><td>첨부</td></tr>
+      <tr><td>416</td><td><a href="/board/view?linkId=48948098">
+        2026년 1차 고령친화우수제품 지정 공고</a></td><td>211</td><td>첨부</td></tr>
+      <tr><td>417</td><td><a href="/board/view?linkId=48948200">
+        고령친화 실증 참여기업 모집(~12.31.)</a></td><td>187</td><td>첨부</td></tr>
+    </tbody></table></body></html>"""
+    r = P(html_nodate, inst(id="khidi_e", base="https://www.khidi.or.kr"))
+    check("게시일 없음", r[0].posted, None)
+    check("그래도 마감일은 잡힘", r[0].deadline, date(2026, 4, 24))
+
+    cfg_e = load_config()
+    cfg_e.exclude_expired = True
+    cfg_e.unknown_deadline = "include_flagged"
+    kept_e, dropped_e = drop_expired_fn(r, cfg_e, TODAY)
+    titles_e = [n.title for n in kept_e]
+    check("4월 마감 공고 제외됨", any("4.24" in t for t in titles_e), False)
+    check("12월 마감 공고 유지", any("12.31" in t for t in titles_e), True)
+    check("마감일 미상 공고 유지", any("우수제품 지정" in t for t in titles_e), True)
+
+    print("\n[12-b] 마감 상태 판정 — '마감임박'을 마감으로 착각하지 않는지")
+    for text, want in [
+        ("접수마감", True),
+        ("모집 종료", True),
+        ("접수가 마감되었습니다", True),
+        ("마감임박 D-3", False),
+        ("마감일 2026-09-30", False),
+        ("마감기한 : D-4", False),
+        ("접수중", False),
+    ]:
+        check(f"'{text}'", DL.is_closed(text), want)
+
+    print("\n[12-c] 상세 페이지에서 마감일 읽기")
+    detail = """<html><body><nav>메뉴</nav><div class="view">
+      <h2>2026년 스마트서비스 지원사업 참여기업 모집 공고</h2>
+      <table><tr><th>접수기간</th><td>2026-09-01 ~ 2026-09-05</td></tr>
+      <tr><th>담당부서</th><td>기업지원단</td></tr></table>
+      <p>자세한 내용은 첨부파일을 참고하시기 바랍니다.</p>
+    </div></body></html>"""
+    dl, note, closed = DL.from_detail_html(detail, TODAY)
+    check("상세에서 마감일", dl, date(2026, 9, 5))
+    check("상시 아님", note, "")
+    check("마감문구 없음", closed, False)
+
+    print("\n[12-d] 마감 확인된 공고가 실제로 걸러지는지")
+    from src.verify import drop_expired
+    from src.parse import Notice
+
+    cfg5 = load_config()
+    cfg5.exclude_expired = True
+    cfg5.unknown_deadline = "include_flagged"
+    items = [
+        Notice("a", "A", "아직 접수중인 공고", "u1", date(2026, 9, 5), date(2026, 9, 30)),
+        Notice("a", "A", "어제 마감된 공고", "u2", date(2026, 9, 1), date(2026, 9, 6)),
+        Notice("a", "A", "오늘 마감인 공고", "u3", date(2026, 9, 1), date(2026, 9, 7)),
+        Notice("a", "A", "마감 문구가 있는 공고", "u4", date(2026, 9, 1), None, True),
+        Notice("a", "A", "마감일 모르는 공고", "u5", date(2026, 9, 5), None),
+        Notice("a", "A", "상시모집 공고", "u6", date(2026, 9, 5), None, False, [], "상시"),
+    ]
+    kept, dropped = drop_expired(items, cfg5, TODAY)
+    titles = [n.title for n in kept]
+    check("어제 마감 → 제외", "어제 마감된 공고" in titles, False)
+    check("마감 문구 → 제외", "마감 문구가 있는 공고" in titles, False)
+    check("오늘 마감 → 포함", "오늘 마감인 공고" in titles, True)
+    check("접수중 → 포함", "아직 접수중인 공고" in titles, True)
+    check("상시모집 → 포함", "상시모집 공고" in titles, True)
+    check("마감일 미상 → 포함(확인필요)", "마감일 모르는 공고" in titles, True)
+    check("제외된 수", dropped, 2)
+
+    print("\n[12-e] unknown_deadline=exclude 로 바꾸면 미상도 제외 (상시는 유지)")
+    cfg5.unknown_deadline = "exclude"
+    kept2, dropped2 = drop_expired(items, cfg5, TODAY)
+    t2 = [n.title for n in kept2]
+    check("마감일 미상 → 제외", "마감일 모르는 공고" in t2, False)
+    check("상시모집은 유지", "상시모집 공고" in t2, True)
+
+    print("\n[12-f] 제목에 마감일이 있으면 파서가 바로 잡는지")
+    html = """<html><body><table><tbody>
+      <tr><td>1</td><td><a href="/v?1">2026년 컨설팅 지원사업 공고 (~9.16.(수) 까지)</a></td>
+          <td>2026-09-03</td></tr>
+      <tr><td>2</td><td><a href="/v?2">고령친화 실증 참여기업 상시모집</a></td>
+          <td>2026-09-02</td></tr>
+      <tr><td>3</td><td><a href="/v?3">시니어 돌봄 지원사업 모집 공고</a></td>
+          <td>2026-09-01</td></tr>
+    </tbody></table></body></html>"""
+    r = P(html, inst(id="t2", base="https://example.com"))
+    check("제목에서 마감일", r[0].deadline, date(2026, 9, 16))
+    check("출처 표시", r[0].deadline_source, "제목")
+    check("상시모집 인식", r[1].note, "상시")
+    check("마감일 없는 건 그대로", r[2].deadline, None)
 
     print()
     if FAILS:

@@ -62,9 +62,16 @@ class Config:
     max_per_institution: int = 5
     exclude_expired: bool = True
     unknown_deadline: str = "include_flagged"
+    unknown_posted: str = "include"  # include | exclude
     dedupe: bool = True
     require_keyword: bool = True
     send_when_empty: bool = True
+
+    # 마감일 확인 (상세 페이지 열어보기)
+    verify_deadline: bool = True
+    verify_max: int = 60
+    verify_timeout: int = 15
+    verify_delay: float = 0.4
 
     # 누적 기록
     archive_enabled: bool = True

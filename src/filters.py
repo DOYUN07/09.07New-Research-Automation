@@ -70,8 +70,14 @@ def apply_filters(
                 stats.dropped_expired += 1
                 continue
 
-        # 3) 게시일 범위 (게시일을 못 읽은 공고는 통과시키되 나중에 표시)
-        if n.posted is not None and n.posted < cutoff:
+        # 3) 게시일 범위
+        if n.posted is not None:
+            if n.posted < cutoff:
+                stats.dropped_old += 1
+                continue
+        elif cfg.unknown_posted == "exclude":
+            # 목록에 게시일이 없는 게시판은 몇 달 전 공고도 계속 후보로 남는다.
+            # 그게 부담스러우면 이 설정으로 아예 버릴 수 있다.
             stats.dropped_old += 1
             continue
 

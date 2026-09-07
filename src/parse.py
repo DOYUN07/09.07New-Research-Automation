@@ -21,6 +21,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
 
+from . import deadline as deadline_rules
 from .config import Institution
 
 # ---------------------------------------------------------------- 날짜
@@ -316,6 +317,8 @@ class Notice:
     deadline: date | None = None
     closed_flag: bool = False
     matched_keywords: list[str] = field(default_factory=list)
+    note: str = ""  # '상시' 등
+    deadline_source: str = "목록"  # 목록 / 제목 / 상세
 
     @property
     def key(self) -> str:
@@ -504,6 +507,23 @@ def _rows_to_notices(
         seen_titles.add(title)
 
         posted, deadline = _pick_dates(row, inst, today)
+        # 연도 없는 날짜('4.24')를 해석할 기준일. 게시일을 알면 그쪽이 훨씬 정확하다.
+        ref = posted or today or date.today()
+        note = ""
+        source = "목록" if deadline else ""
+
+        # 목록에 마감일이 없으면 제목에서 찾아본다.
+        # "(~9.16.(수) 까지)" 처럼 제목에 박아두는 게시판이 많다.
+        if deadline is None:
+            deadline, note = deadline_rules.from_text(
+                title, ref, anchor_is_posted=posted is not None
+            )
+            if deadline:
+                source = "제목"
+
+        row_text = row.get_text(" ", strip=True)
+        closed = looks_closed(row) or deadline_rules.is_closed(row_text)
+
         out.append(
             Notice(
                 institution_id=inst.id,
@@ -512,7 +532,9 @@ def _rows_to_notices(
                 url=_pick_link(row, inst),
                 posted=posted,
                 deadline=deadline,
-                closed_flag=looks_closed(row),
+                closed_flag=closed,
+                note=note,
+                deadline_source=source,
             )
         )
     return out
