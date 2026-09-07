@@ -1,0 +1,71 @@
+name: 평일 공고 브리핑
+
+on:
+  schedule:
+    # UTC 01:00 = 한국시간 10:00 · 요일 1-5 = 월~금 (주말 제외)
+    - cron: "0 1 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "메일을 보내지 않고 결과만 확인"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-brief
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 브리핑 실행
+        env:
+          # ↓ GitHub Secrets 에 등록하면 발송이 켜집니다. 없으면 결과 파일만 만들고 넘어갑니다.
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          # ↓ 선택. 등록하면 config.yaml 의 recipients 대신 이 값을 씁니다 (쉼표 구분)
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          # ↓ 선택. 공공데이터포털 인증키. 나중에 추가해도 됩니다.
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+        run: |
+          python -m src.main ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: 결과 파일 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brief-${{ github.run_number }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: 발송 이력·누적 기록 커밋
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # state/ 아래 전부 + 저장소 최상단의 누적 엑셀 (엑셀은 주 1회만 바뀝니다)
+          git add -A state/
+          git add -A -- '*.xlsx'
+          if git diff --staged --quiet; then
+            echo "변경 없음"
+          else
+            git commit -m "chore: 발송 이력·누적 기록 갱신 $(date -u +%Y-%m-%d)"
+            git push
+          fi

@@ -1,0 +1,48 @@
+name: 기관 수집 진단
+
+# 34개 기관에 실제로 접속해서 목록이 제대로 읽히는지 점검합니다.
+# Actions 탭 → "기관 수집 진단" → Run workflow 로 수동 실행하세요.
+# 결과는 실행 로그에 바로 출력되고, Artifacts 의 diagnose-report 로도 내려받을 수 있습니다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_disabled:
+        description: "비활성(enabled:false) 기관까지 점검"
+        type: boolean
+        default: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 진단 실행
+        run: |
+          python -m src.main --diagnose --dump ${{ inputs.include_disabled && '--all' || '' }}
+
+      - name: 요약을 실행 화면에 표시
+        if: always()
+        run: cat out/diagnose.md >> $GITHUB_STEP_SUMMARY || true
+
+      - name: 리포트 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # out/diagnose.md  진단 표
+          # out/html/*.html  목록 인식에 실패한 기관의 원본 HTML (원인 분석용)
+          name: diagnose-report
+          path: out/
+          retention-days: 30
+          if-no-files-found: ignore
