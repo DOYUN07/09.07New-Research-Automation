@@ -31,6 +31,11 @@ _D2 = re.compile(r"(?<!\d)(\d{2})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})(?!\d)"
 
 _RANGE_SEP = re.compile(r"^[\s~〜∼–—\-]*(?:부터|까지)?[\s~〜∼–—\-]*$")
 
+# '마감 2026-12-31' 처럼 날짜 바로 앞에 붙는 마감 표시
+_DEADLINE_LABEL = re.compile(
+    r"(마감|종료|접수\s*마감|신청\s*마감|모집\s*마감)\s*(일시|일자|기한|일)?\s*[::]?\s*$"
+)
+
 
 @dataclass
 class FoundDate:
@@ -79,10 +84,16 @@ def split_period(text: str, today: date | None = None) -> tuple[date | None, dat
     ds = find_dates(text)
     if not ds:
         return None, None
-    if len(ds) == 1:
-        return ds[0].value, None
 
     ref = today or date.today()
+
+    # 0) '마감 2026-12-31' 처럼 앞에 마감 표시가 붙은 날짜는 게시일이 될 수 없다.
+    #    (전북테크노파크처럼 목록에 마감일시만 있는 게시판 대응)
+    labeled_deadline: set[int] = set()
+    for k, d in enumerate(ds):
+        window = text[max(0, d.start - 14) : d.start]
+        if _DEADLINE_LABEL.search(window):
+            labeled_deadline.add(k)
 
     # 1) 'A ~ B' 형태로 붙어 있는 날짜쌍을 모두 찾는다 (공고기간·신청기간 등)
     in_range: set[int] = set()
@@ -101,20 +112,28 @@ def split_period(text: str, today: date | None = None) -> tuple[date | None, dat
             continue
         i += 1
 
-    # 2) 게시일: 기간에 속하지 않은 날짜를 우선하고, 미래 날짜는 쓰지 않는다
-    loose = [ds[k].value for k in range(len(ds)) if k not in in_range]
+    # 2) 게시일: 기간·마감표시에 속하지 않은 날짜를 우선하고, 미래 날짜는 쓰지 않는다
+    loose = [
+        ds[k].value
+        for k in range(len(ds))
+        if k not in in_range and k not in labeled_deadline
+    ]
     candidates = [v for v in sorted(loose) if v <= ref]
     if not candidates:
-        candidates = [v for v in sorted(d.value for d in ds) if v <= ref]
-    posted = candidates[0] if candidates else min(d.value for d in ds)
+        rest = [ds[k].value for k in range(len(ds)) if k not in labeled_deadline]
+        candidates = [v for v in sorted(rest) if v <= ref]
+    posted = candidates[0] if candidates else None
 
-    # 3) 마감일: 기간의 종료일 중 가장 늦은 것, 기간이 없으면 가장 늦은 날짜
-    if range_ends:
+    # 3) 마감일: 마감표시가 붙은 날짜 > 기간 종료일 > 가장 늦은 날짜 순으로 채택
+    if labeled_deadline:
+        deadline = max(ds[k].value for k in labeled_deadline)
+    elif range_ends:
         deadline = max(range_ends)
     else:
         latest = max(d.value for d in ds)
-        deadline = latest if latest > posted else None
-    if deadline is not None and deadline < posted:
+        deadline = latest if posted is not None and latest > posted else None
+
+    if deadline is not None and posted is not None and deadline < posted:
         deadline = None
     return posted, deadline
 
@@ -162,13 +181,43 @@ def _collapse_doubled(s: str) -> str:
 
 
 def _is_file_anchor(a: Tag, text: str) -> bool:
-    href = (a.get("href") or "") + " " + (a.get("onclick") or "")
+    """첨부파일 링크인지 판별한다.
+
+    class 이름으로 판단하지 않는다 — 'download', 'dropdown', 'file-list' 같은 이름이
+    본문 링크에도 흔히 붙어 있어서, class로 거르면 멀쩡한 게시판이 통째로 날아간다.
+    실제로 v1.1에서 NIPA가 이 문제로 0건이 되었다.
+    """
     if _FILE_EXT.search(text) or _FILE_WORDS.search(text):
         return True
-    if re.search(r"(download|fileDown|file_down|attachfile|/file/)", href, re.IGNORECASE):
-        return True
-    cls = " ".join(a.get("class") or [])
-    return bool(re.search(r"(file|down|attach)", cls, re.IGNORECASE))
+    href = (a.get("href") or "") + " " + (a.get("onclick") or "")
+    return bool(
+        re.search(r"(fileDown|file_down|filedown|attachfile|/download|downloadFile)", href)
+    )
+
+
+def _anchor_title(a: Tag) -> str:
+    """<a> 하나에서 제목을 뽑는다.
+
+    한 <a> 안에 '말줄임용 span'과 '전체제목 span'이 같이 들어 있는 게시판이 있어
+    통째로 텍스트를 뽑으면 제목이 두 번 나온다(부산테크노파크).
+    자식 요소끼리 한쪽이 다른 쪽의 앞부분이면 긴 쪽만 쓴다.
+    """
+    full = clean_text(a.get_text(" "))
+    attr = clean_text(a.get("title") or "")
+    if len(attr) > len(full):
+        full = attr
+
+    kids = [clean_text(c.get_text(" ")) for c in a.find_all(True, recursive=False)]
+    kids = [k for k in kids if len(k) >= 8]
+    if len(kids) >= 2:
+        for i in range(len(kids)):
+            for j in range(len(kids)):
+                if i == j:
+                    continue
+                short = kids[i].rstrip(" .…·")
+                if short and kids[j].startswith(short):
+                    return kids[j]
+    return full
 
 
 _CLOSED_WORDS = {"마감", "종료", "접수마감", "모집마감", "완료", "접수종료"}
@@ -268,19 +317,25 @@ def _pick_title(row: Tag, inst: Institution) -> str:
             t = clean_text(el.get_text(" "))
             if t:
                 return t
+    anchors = row.find_all("a")
+
+    # 1차: 첨부파일 링크를 뺀 나머지 중 가장 긴 것
     best = ""
-    for a in row.find_all("a"):
-        t = clean_text(a.get_text(" "))
-        # title 속성이 더 완전한 경우가 많다 (목록에서 말줄임된 제목의 원본)
-        attr = clean_text(a.get("title") or "")
-        if len(attr) > len(t):
-            t = attr
-        if not t:
+    for a in anchors:
+        t = _anchor_title(a)
+        if not t or _is_file_anchor(a, t):
             continue
-        if _is_file_anchor(a, t):
-            continue  # 첨부파일 링크는 제목이 아니다
         if len(t) > len(best):
             best = t
+
+    # 2차 안전장치: 전부 걸러졌다면 필터 없이 다시 고른다.
+    # 판별이 과하게 걸려 제목을 통째로 잃는 사고를 막는다.
+    if len(best) < 4:
+        for a in anchors:
+            t = _anchor_title(a)
+            if len(t) > len(best):
+                best = t
+
     if len(best) < 4:
         # 링크 텍스트가 아이콘뿐인 경우 — 행에서 가장 긴 셀을 제목으로
         for cell in row.find_all(["td", "div", "p", "strong"]):
@@ -295,13 +350,19 @@ def _pick_link(row: Tag, inst: Institution) -> str:
     anchors = row.find_all("a")
 
     # 1) 정상적인 href (첨부파일 링크는 건너뛴다)
-    for a in anchors:
-        href = (a.get("href") or "").strip()
-        if not href or href.startswith(("javascript:", "#", "mailto:")):
-            continue
+    usable = [
+        a
+        for a in anchors
+        if (a.get("href") or "").strip()
+        and not (a.get("href") or "").strip().startswith(("javascript:", "#", "mailto:"))
+    ]
+    for a in usable:
         if _is_file_anchor(a, clean_text(a.get_text(" "))):
             continue
-        return urljoin(base, href)
+        return urljoin(base, a["href"].strip())
+    # 전부 첨부파일로 판정됐다면 판별이 과한 것이므로 첫 번째를 쓴다
+    if usable:
+        return urljoin(base, usable[0]["href"].strip())
 
     # 2) onclick / javascript: 안에서 식별자 추출
     if inst.link_from_onclick:
@@ -345,17 +406,37 @@ def _pick_dates(
 
 
 def parse_html(html: str, inst: Institution, today: date | None = None) -> list[Notice]:
-    soup = BeautifulSoup(html, "lxml")
+    """정리된 문서로 먼저 시도하고, 결과가 0건이면 원본으로 다시 시도한다.
 
-    # 본문과 무관한 영역은 미리 걷어낸다 (메뉴를 목록으로 오인하는 것을 줄임)
-    for tag in soup.find_all(["script", "style", "nav", "header", "footer", "select"]):
-        tag.decompose()
+    nav/header 안에 게시판을 넣어둔 사이트가 있어서, 정리 단계가 오히려
+    멀쩡한 목록을 지워버리는 경우가 있다. 그래서 되돌아갈 길을 남겨둔다.
+    """
+    for strip_chrome in (True, False):
+        rows = _rows_of(html, inst, strip_chrome)
+        out = _rows_to_notices(rows, inst, today)
+        if out:
+            return out
+    return []
+
+
+def _rows_of(html: str, inst: Institution, strip_chrome: bool) -> list[Tag]:
+    soup = BeautifulSoup(html, "lxml")
+    if strip_chrome:
+        # 본문과 무관한 영역을 걷어내 메뉴를 목록으로 오인하는 것을 줄인다
+        for tag in soup.find_all(["script", "style", "nav", "header", "footer", "select"]):
+            tag.decompose()
+    else:
+        for tag in soup.find_all(["script", "style"]):
+            tag.decompose()
 
     if inst.row_selector:
-        rows = soup.select(inst.row_selector)
-    else:
-        rows = auto_detect_rows(soup)
+        return soup.select(inst.row_selector)
+    return auto_detect_rows(soup)
 
+
+def _rows_to_notices(
+    rows: list[Tag], inst: Institution, today: date | None
+) -> list[Notice]:
     out: list[Notice] = []
     seen_titles: set[str] = set()
     for row in rows:

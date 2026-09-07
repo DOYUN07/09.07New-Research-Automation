@@ -156,6 +156,33 @@ def main() -> int:
     check("2행 게시일", r[1].posted, date(2026, 9, 1))
     check("2행 마감일", r[1].deadline, date(2026, 10, 5))
 
+    # -------------------------------- 2차 실전 진단(2026-09-07)에서 발견된 문제들
+    print("\n[D] 목록에 마감일시만 있을 때 (전북테크노파크)")
+    r = P(fixtures.DEADLINE_ONLY, inst(id="jbtp", base="https://jbcis.jbtp.or.kr"))
+    check("행 수", len(r), 3)
+    check("마감일시를 게시일로 쓰지 않음", r[0].posted, None)
+    check("마감일로 인식", r[0].deadline, date(2026, 12, 31))
+    check("3행 마감일", r[2].deadline, date(2026, 9, 30))
+
+    print("\n[E] 두 span 내용이 완전히 같지 않은 중복 제목 (부산테크노파크)")
+    r = P(fixtures.PARTIAL_DOUBLE, inst(id="btp2", base="https://www.btp.or.kr"))
+    check("행 수", len(r), 3)
+    check(
+        "긴 쪽만 채택",
+        r[0].title,
+        "기업성장기반 글로벌 하이메디 허브 특구 상생협력사업 기업지원모집 공고(4차) 재공고",
+    )
+    check("말줄임표 미포함", "..." in r[0].title, False)
+    check("2행도 1회만", r[1].title.count("글로벌시장"), 1)
+    check("완전 동일한 경우도 1회", r[2].title, "시니어 돌봄로봇 실증 참여기업 모집 공고")
+
+    print("\n[F] 게시판이 <header> 안에 있어도 인식 (NIPA 0건 회귀 방지)")
+    r = P(fixtures.INSIDE_HEADER, inst(id="nipa", base="https://www.nipa.kr"))
+    check("행 수", len(r), 3)
+    check("제목", r[0].title, "2026년 아태 AI 특화지구(AHAP) 조성 사업 공고")
+    check("class에 down이 있어도 링크 유지", "/home/2-2/16921" in r[0].url, True)
+    check("게시일", r[0].posted, date(2026, 9, 3))
+
     # ---------------------------------------------------------------- 필터
     print("\n[9] 필터 규칙")
     cfg = load_config()

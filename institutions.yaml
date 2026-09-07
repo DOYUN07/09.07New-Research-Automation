@@ -77,13 +77,14 @@ institutions:
   - id: jbtp
     name: 전북테크노파크
     enabled: true
-    status: check
+    status: ok
     url: "https://jbcis.jbtp.or.kr/main/"
     base: "https://jbcis.jbtp.or.kr"
     notes: >
-      1차 진단에서 www.jbtp.or.kr 접속 실패(연결 불가) → 같은 사업공고를 정적으로 노출하는
-      전북 기업관리시스템(jbcis)으로 교체. 이것도 실패하면 enabled:false 로 두세요.
-      원래 주소: https://www.jbtp.or.kr/board/list.jbtp?boardId=BBS_0000006&menuCd=DOM_000000102001000000&contentsSid=9
+      www.jbtp.or.kr 은 접속 불가라 같은 사업공고를 싣는 전북 기업관리시스템(jbcis)으로 교체.
+      2차 진단에서 20건 수집 확인. 다만 이 화면에는 게시일이 없고 마감일시만 있어
+      모든 공고가 '게시일 미확인'으로 표시된다. 상세 링크는 www.jbtp.or.kr 로 연결되므로
+      접속이 안 되면 브라우저에서 직접 열어야 할 수 있음.
 
   - id: jcia
     name: 전남정보문화산업진흥원
@@ -243,11 +244,14 @@ institutions:
 
   - id: socialenterprise
     name: 한국사회적기업진흥원
-    enabled: true
+    enabled: false
     status: blocked
     url: "https://www.socialenterprise.or.kr/social/board/list.do?m_cd=D019&board_code=BO02"
     base: "https://www.socialenterprise.or.kr/social/board/"
-    notes: "엑셀의 '한국사회기술원'은 실존 명칭이 아님 → 이 기관으로 판단. 1차 진단에서 HTTP 404 → mode/pg 파라미터를 빼고 재시도."
+    notes: >
+      엑셀의 '한국사회기술원'은 실존 명칭이 아니어서 이 기관으로 판단했으나,
+      1·2차 진단 모두 HTTP 404 → 게시판 주소가 바뀐 것으로 보여 비활성화.
+      정확한 공고 게시판 주소를 알려주시면 url만 바꿔 다시 켜면 됩니다.
 
   - id: ekr
     name: 한국농어촌공사

@@ -192,6 +192,52 @@ TWO_PERIODS = """<html><body><table><tbody>
     <td>박담당</td><td>140</td></tr>
 </tbody></table></body></html>"""
 
+# 전북테크노파크형: 목록에 게시일 없이 '마감 2026-12-31 18:00'만 있다
+# (2차 진단에서 마감일시가 게시일로 잡히던 문제)
+DEADLINE_ONLY = """<html><body><ul class="biz-list">
+<li><span class="state">접수중</span>
+    <a href="https://www.jbtp.or.kr/board/view.jbtp?dataSid=19770">
+      2026년 산업기술단지 거점기능강화사업 기업애로해결 컨설팅 수요조사 공고</a>
+    <span class="due">마감 2026-12-31 18:00</span></li>
+<li><span class="state">접수중</span>
+    <a href="https://www.jbtp.or.kr/board/view.jbtp?dataSid=19843">
+      2026년 전북형 스마트 제조혁신 프로젝트 사업 추가모집 공고</a>
+    <span class="due">마감 2026-12-31 18:00</span></li>
+<li><span class="state">접수중</span>
+    <a href="https://www.jbtp.or.kr/board/view.jbtp?dataSid=20611">
+      2026년도 오픈랩 활용 기술지원 프로그램 참여기업 모집공고</a>
+    <span class="due">마감 2026-09-30 17:00</span></li>
+</ul></body></html>"""
+
+# 부산테크노파크형 3: 두 span의 내용이 완전히 같지는 않다
+# (한쪽은 '재공고' 라벨이 붙고, 다른 쪽은 말줄임표로 잘려 있음)
+PARTIAL_DOUBLE = """<html><body><table><tbody>
+<tr><td>4530</td><td><a href="/view?seq=1">
+      <span class="titleHover">기업성장기반 글로벌 하이메디 허브 특구 상생협력사업 기업지원모집 공고(4차) 재공고</span><span
+      class="subjectWr">기업성장기반 글로벌 하이메디 허브 특구 상생협...</span></a></td>
+    <td>2026.09.07</td></tr>
+<tr><td>4529</td><td><a href="/view?seq=2">
+      <span class="titleHover">글로벌시장 대응 AI기반 공조부품 성능평가 인프라 고도화사업 지원사업 2차 공고 연장</span><span
+      class="subjectWr">글로벌시장 대응 AI기반 공조부품 성능평가 인프...</span></a></td>
+    <td>2026.09.05</td></tr>
+<tr><td>4528</td><td><a href="/view?seq=3">
+      <span class="titleHover">시니어 돌봄로봇 실증 참여기업 모집 공고</span><span
+      class="subjectWr">시니어 돌봄로봇 실증 참여기업 모집 공고</span></a></td>
+    <td>2026.09.02</td></tr>
+</tbody></table></body></html>"""
+
+# 게시판이 <header> 안에 들어 있는 사이트 — 정리 단계가 목록을 지워버리면 안 된다
+# (v1.1에서 NIPA가 0건이 된 유형의 회귀 방지)
+INSIDE_HEADER = """<html><body><header id="wrap">
+<table><tbody>
+<tr><td>1</td><td><a href="/home/2-2/16921" class="down-link">
+      2026년 아태 AI 특화지구(AHAP) 조성 사업 공고</a></td><td>2026-09-03</td></tr>
+<tr><td>2</td><td><a href="/home/2-2/16900" class="down-link">
+      2026년 KoVAC XR 쇼룸 입주기업 2차 모집</a></td><td>2026-08-18</td></tr>
+<tr><td>3</td><td><a href="/home/2-2/16880" class="down-link">
+      2026년 클라우드 바우처 지원사업 3차 공고</a></td><td>2026-08-11</td></tr>
+</tbody></table></header></body></html>"""
+
 # 게시일 컬럼이 아예 없는 게시판 (고령친화산업지원센터 센터공지 형태)
 NO_DATE = """<html><body><table class="tstyle_list"><tbody>
 <tr><td class="num">15</td><td class="ellipsis">
