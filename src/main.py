@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive
+from . import archive, sheet
 from .config import ROOT, Config, Institution, load_config, load_institutions
 from .fetch import FetchError, fetch, make_session
 from .filters import FilterStats, apply_filters
@@ -115,7 +115,15 @@ def collect(
 
 def run(dry_run: bool = False) -> int:
     cfg = load_config()
-    institutions = [x for x in load_institutions() if x.enabled and x.url]
+    all_inst = load_institutions()
+
+    # 구글시트가 연결돼 있으면 키워드·수신자·기관을 시트 값으로 덮어쓴다.
+    # 시트를 못 읽어도 저장소 설정으로 그대로 진행한다.
+    all_inst, sheet_log = sheet.apply_all(cfg, all_inst)
+    for line in sheet_log:
+        print(f"-- {line}")
+
+    institutions = [x for x in all_inst if x.enabled and x.url]
     today = today_kst()
 
     print(f"== 공고 브리핑 {today} (대상 {len(institutions)}개 기관) ==")
@@ -139,7 +147,7 @@ def run(dry_run: bool = False) -> int:
     total = sum(len(v) for v in grouped.values())
     print(f"-- {stats.as_line()}")
 
-    html_body = render_html(grouped, names, today, cfg, empty, failed)
+    html_body = render_html(grouped, names, today, cfg, empty, failed, sheet_log)
     text_body = render_text(grouped, names, today, cfg)
 
     OUT.mkdir(exist_ok=True)
@@ -222,6 +230,9 @@ def run(dry_run: bool = False) -> int:
 def diagnose(include_disabled: bool = False, dump: bool = False) -> int:
     cfg = load_config()
     all_inst = load_institutions()
+    all_inst, sheet_log = sheet.apply_all(cfg, all_inst)
+    for line in sheet_log:
+        print(f"-- {line}")
     targets = [x for x in all_inst if (x.enabled or include_disabled) and x.url]
     today = today_kst()
 
@@ -275,6 +286,7 @@ def diagnose(include_disabled: bool = False, dump: bool = False) -> int:
         "",
         f"대상 {len(targets)}곳 / 전체 {len(all_inst)}곳",
         "",
+        *([f"> {x}" for x in sheet_log] + [""] if sheet_log else []),
         "| 기관 | 상태 | 수집 | 최신 게시일 | 비고 |",
         "|---|---|---|---|---|",
     ]

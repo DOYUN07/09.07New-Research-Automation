@@ -36,6 +36,7 @@ def render_html(
     cfg: Config,
     empty_institutions: list[str],
     failed: list[tuple[str, str]],
+    source_notes: list[str] | None = None,
 ) -> str:
     total = sum(len(v) for v in grouped.values())
 
@@ -105,6 +106,8 @@ def render_html(
     if failed:
         items = "; ".join(f"{_esc(n)} — {_esc(e)}" for n, e in failed)
         notes.append(f'<b style="color:#b91c1c;">수집 실패</b> ({len(failed)}곳): {items}')
+    for line in source_notes or []:
+        notes.append(_esc(line))
 
     notes_html = ""
     if notes:

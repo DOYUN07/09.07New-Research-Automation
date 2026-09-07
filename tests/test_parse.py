@@ -7,7 +7,7 @@ from __future__ import annotations
 import sys
 from datetime import date
 
-from src.config import Institution, load_config
+from src.config import Institution, load_config, load_institutions
 from src.filters import FilterStats, apply_filters
 from src.parse import parse
 from tests import fixtures
@@ -30,6 +30,10 @@ def inst(**kw) -> Institution:
     kw.setdefault("url", "https://example.com/list")
     kw.setdefault("base", "https://example.com")
     return Institution(**kw)
+
+
+def load_institutions_for_test():
+    return load_institutions()
 
 
 def P(html: str, institution: Institution):
@@ -327,6 +331,121 @@ def main() -> int:
             )
             check("색 채운 셀 없음", painted, 0)
             check("링크는 하이퍼링크", ws.cell(2, 7).value, "바로가기")
+
+    # ---------------------------------------------------------------- 구글시트
+    print("\n[11] 구글시트 연동")
+    from src import sheet as S
+
+    INC_CSV = (
+        "키워드,사용,메모\n"
+        "시니어,Y,\n"
+        "에이지테크,,비었으면 사용으로 봄\n"
+        "쓰지않음,N,꺼둔 줄\n"
+        ",,빈 줄\n"
+    )
+    EXC_CSV = (
+        "키워드,사용,메모\n"
+        "채용,Y,\n"
+        " 입찰 ,Y,앞뒤 공백\n"
+        "안쓰는제외,N,\n"
+    )
+    KW_CSV = (
+        "구분,키워드,사용,메모\n"
+        "포함,시니어,Y,\n"
+        "포함,에이지테크,,비었으면 사용으로 봄\n"
+        "포함,쓰지않음,N,꺼둔 줄\n"
+        "제외,채용,Y,\n"
+        "제외, 입찰 ,Y,앞뒤 공백\n"
+        ",,,빈 줄\n"
+    )
+    RC_CSV = (
+        "이메일,이름,사용,메모\n"
+        "a@zeroweb.co.kr,홍길동,Y,\n"
+        "b@zeroweb.co.kr,김철수,N,휴직\n"
+        "잘못된주소,이영희,Y,@ 없음\n"
+    )
+    IN_CSV = (
+        "기관명,주소,사용,메모\n"
+        "부산정보산업진흥원,,N,잠시 끔\n"
+        "KOTRA,,Y,다시 켬\n"
+        "새로운진흥원,https://example.or.kr/notice,Y,신규\n"
+        "이름만있고주소없음,,Y,추가되면 안 됨\n"
+    )
+
+    import csv as _csv
+    import io as _io
+
+    FAKE = {"kw": KW_CSV, "inc": INC_CSV, "exc": EXC_CSV, "rc": RC_CSV, "in": IN_CSV}
+
+    def fake_get(url, timeout):
+        """네트워크 대신 위 CSV 문자열을 돌려준다 (구글시트 게시본 형태)."""
+        return list(_csv.DictReader(_io.StringIO(FAKE[url])))
+
+    S._get = fake_get
+
+    cfg2 = load_config()
+    cfg2.sheet = {
+        "enabled": True,
+        "include_keywords_url": "inc",
+        "exclude_keywords_url": "exc",
+        "recipients_url": "rc",
+        "institutions_url": "in",
+    }
+    insts = load_institutions_for_test()
+    insts, log = S.apply_all(cfg2, insts)
+
+    check("포함 키워드", cfg2.include_keywords, ["시니어", "에이지테크"])
+    check("제외 키워드", cfg2.exclude_keywords, ["채용", "입찰"])
+    check("수신자 (N·잘못된 주소 제외)", cfg2.recipients, ["a@zeroweb.co.kr"])
+    by = {i.name: i for i in insts}
+    check("시트에서 끈 기관", by["부산정보산업진흥원"].enabled, False)
+    check("시트에서 켠 기관", by["KOTRA"].enabled, True)
+    check("새 기관 추가됨", "새로운진흥원" in by, True)
+    check("주소 없는 새 이름은 무시", "이름만있고주소없음" in by, False)
+    check("로그 4줄", len(log), 4)
+
+    print("\n[11-a2] 예전 방식(한 탭에 '구분' 칸)도 계속 동작")
+    cfg2b = load_config()
+    cfg2b.sheet = {"enabled": True, "keywords_url": "kw"}
+    S.apply_all(cfg2b, load_institutions_for_test())
+    check("포함 키워드", cfg2b.include_keywords, ["시니어", "에이지테크"])
+    check("제외 키워드", cfg2b.exclude_keywords, ["채용", "입찰"])
+
+    print("\n[11-b] 시트를 못 읽어도 저장소 설정으로 계속 진행")
+
+    def boom(url, timeout):
+        raise S.SheetError("HTTP 404")
+
+    S._get = boom
+    cfg3 = load_config()
+    before_inc = list(cfg3.include_keywords)
+    cfg3.sheet = {"enabled": True, "keywords_url": "kw", "recipients_url": "rc"}
+    insts3, log3 = S.apply_all(cfg3, load_institutions_for_test())
+    check("키워드 그대로", cfg3.include_keywords, before_inc)
+    check("실패가 로그에 남음", all("실패" in x for x in log3), True)
+    check("기관 목록 유지", len(insts3) > 30, True)
+
+    print("\n[11-b2] 편집 주소를 CSV 주소로 자동 변환")
+    SID = "1Mf3bRkTTbl-LhRSBsqcP1zOTZe4pN4A9Fn2EsP7aZko"
+    check(
+        "편집 주소 → export CSV",
+        S.to_csv_url(f"https://docs.google.com/spreadsheets/d/{SID}/edit?gid=441632177#gid=441632177"),
+        f"https://docs.google.com/spreadsheets/d/{SID}/export?format=csv&gid=441632177",
+    )
+    check(
+        "gid 없으면 첫 탭(0)",
+        S.to_csv_url(f"https://docs.google.com/spreadsheets/d/{SID}/edit"),
+        f"https://docs.google.com/spreadsheets/d/{SID}/export?format=csv&gid=0",
+    )
+    pub = "https://docs.google.com/spreadsheets/d/e/2PACX-1vABC/pub?gid=0&single=true&output=csv"
+    check("웹에 게시 주소는 그대로", S.to_csv_url(pub), pub)
+    check("빈 값은 빈 값", S.to_csv_url(""), "")
+
+    print("\n[11-c] 시트를 끄면 아무것도 안 함")
+    cfg4 = load_config()
+    cfg4.sheet = {"enabled": False, "keywords_url": "kw"}
+    _, log4 = S.apply_all(cfg4, load_institutions_for_test())
+    check("로그 없음", log4, [])
 
     print()
     if FAILS:

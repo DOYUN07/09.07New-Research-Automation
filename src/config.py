@@ -74,6 +74,7 @@ class Config:
     exclude_keywords: list[str] = field(default_factory=list)
 
     http: dict[str, Any] = field(default_factory=dict)
+    sheet: dict[str, Any] = field(default_factory=dict)
 
     @property
     def timeout(self) -> int:
