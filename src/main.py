@@ -47,7 +47,7 @@ def collect(
             time.sleep(cfg.delay_between)
         try:
             text = fetch(session, inst, cfg)
-            notices = parse(text, inst)
+            notices = parse(text, inst, today_kst())
             if not notices:
                 failed.append((inst.name, "목록을 인식하지 못했습니다"))
                 raw[inst.id] = []
@@ -142,11 +142,15 @@ def run(dry_run: bool = False) -> int:
 # --------------------------------------------------------------- 진단
 
 
-def diagnose(include_disabled: bool = False) -> int:
+def diagnose(include_disabled: bool = False, dump: bool = False) -> int:
     cfg = load_config()
     all_inst = load_institutions()
     targets = [x for x in all_inst if (x.enabled or include_disabled) and x.url]
     today = today_kst()
+
+    dump_dir = OUT / "html"
+    if dump:
+        dump_dir.mkdir(parents=True, exist_ok=True)
 
     session = make_session(cfg)
     lines = [
@@ -165,9 +169,12 @@ def diagnose(include_disabled: bool = False) -> int:
             time.sleep(cfg.delay_between)
         try:
             text = fetch(session, inst, cfg)
-            notices = parse(text, inst)
+            notices = parse(text, inst, today_kst())
             if not notices:
                 lines.append(f"| {inst.name} | ⚠️ | 0건 | — | 목록 인식 실패 |")
+                if dump:
+                    # 목록을 못 읽은 기관의 원본 HTML을 남겨 원인을 볼 수 있게 한다
+                    (dump_dir / f"{inst.id}.html").write_text(text, encoding="utf-8")
                 continue
             ok += 1
             dated = [n for n in notices if n.posted]
@@ -212,11 +219,16 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="발송·이력 저장 없이 결과만 생성")
     ap.add_argument("--diagnose", action="store_true", help="기관별 수집 상태 점검")
     ap.add_argument("--all", action="store_true", help="진단 시 비활성 기관도 포함")
+    ap.add_argument(
+        "--dump",
+        action="store_true",
+        help="진단 시 목록 인식에 실패한 기관의 원본 HTML을 out/html/ 에 저장",
+    )
     args = ap.parse_args()
 
     try:
         if args.diagnose:
-            return diagnose(include_disabled=args.all)
+            return diagnose(include_disabled=args.all, dump=args.dump)
         return run(dry_run=args.dry_run)
     except Exception:  # noqa: BLE001
         traceback.print_exc()

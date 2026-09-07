@@ -78,9 +78,12 @@ institutions:
     name: 전북테크노파크
     enabled: true
     status: check
-    url: "https://www.jbtp.or.kr/board/list.jbtp?boardId=BBS_0000006&menuCd=DOM_000000102001000000&contentsSid=9"
-    base: "https://www.jbtp.or.kr"
-    notes: "조사 환경에서 호스트 무응답(봇차단 추정). 진단 실행에서 재확인 필요."
+    url: "https://jbcis.jbtp.or.kr/main/"
+    base: "https://jbcis.jbtp.or.kr"
+    notes: >
+      1차 진단에서 www.jbtp.or.kr 접속 실패(연결 불가) → 같은 사업공고를 정적으로 노출하는
+      전북 기업관리시스템(jbcis)으로 교체. 이것도 실패하면 enabled:false 로 두세요.
+      원래 주소: https://www.jbtp.or.kr/board/list.jbtp?boardId=BBS_0000006&menuCd=DOM_000000102001000000&contentsSid=9
 
   - id: jcia
     name: 전남정보문화산업진흥원
@@ -242,9 +245,9 @@ institutions:
     name: 한국사회적기업진흥원
     enabled: true
     status: blocked
-    url: "https://www.socialenterprise.or.kr/social/board/list.do?m_cd=D019&board_code=BO02&mode=list&pg=1"
+    url: "https://www.socialenterprise.or.kr/social/board/list.do?m_cd=D019&board_code=BO02"
     base: "https://www.socialenterprise.or.kr/social/board/"
-    notes: "엑셀의 '한국사회기술원'은 실존 명칭이 아님 → 이 기관으로 판단. 봇 요청을 400으로 차단하므로 실패 가능성 높음."
+    notes: "엑셀의 '한국사회기술원'은 실존 명칭이 아님 → 이 기관으로 판단. 1차 진단에서 HTTP 404 → mode/pg 파라미터를 빼고 재시도."
 
   - id: ekr
     name: 한국농어촌공사
@@ -295,11 +298,13 @@ institutions:
 
   - id: kodhia
     name: 한국디지털헬스산업협회
-    enabled: false
-    status: none
+    enabled: true
+    status: ok
     url: "https://kodhia.or.kr/core/?cid=43&cate1=%EC%82%AC%EC%97%85%EA%B3%B5%EA%B3%A0"
     base: "https://kodhia.or.kr/"
-    notes: "사업공고 카테고리는 있으나 서버 응답이 전부 '데이터가 없습니다'. AJAX 후주입 추정."
+    notes: >
+      사전조사에선 빈 응답이었으나 1차 진단에서 20건 정상 수집됨(SBOM 기술지원사업,
+      신의료기술평가 길라잡이 등) → 활성화. 디지털헬스 분야라 적합도 높음.
 
   - id: bio_council
     name: 한국바이오특화센터협의회

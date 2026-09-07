@@ -63,12 +63,18 @@ def find_dates(text: str) -> list[FoundDate]:
     return out
 
 
-def split_period(text: str) -> tuple[date | None, date | None]:
+def split_period(text: str, today: date | None = None) -> tuple[date | None, date | None]:
     """행 텍스트에서 (게시일, 마감일)을 추정한다.
 
-    - 'A ~ B' 형태로 붙어 있는 두 날짜는 접수기간으로 보고 B를 마감일로 잡는다.
-    - 접수기간에 속하지 않은 날짜가 있으면 그것을 게시일로 쓴다.
-    - 접수기간밖에 없으면 시작일을 게시일 대용으로 쓴다.
+    한 행에 게시일·공고기간·신청기간이 뒤섞여 최대 4~5개 날짜가 나오는 사이트가 있어
+    '어느 게 접수기간인지' 맞히려 들면 오히려 틀린다. 대신 단순하고 안전한 규칙을 쓴다.
+
+      게시일 = 오늘보다 늦지 않은 날짜 중 가장 이른 것
+               (미래 날짜를 게시일로 잡는 사고를 막는다)
+      마감일 = 가장 늦은 날짜 (게시일보다 뒤일 때만)
+
+    게시일이 실제보다 며칠 이르게 잡힐 수 있으나, 그 방향의 오차는
+    '최근 10일' 필터에서 공고를 놓치는 쪽이 아니라 한 번 더 보는 쪽으로 작용한다.
     """
     ds = find_dates(text)
     if not ds:
@@ -76,25 +82,40 @@ def split_period(text: str) -> tuple[date | None, date | None]:
     if len(ds) == 1:
         return ds[0].value, None
 
-    period: tuple[int, int] | None = None
-    for i in range(len(ds) - 1):
+    ref = today or date.today()
+
+    # 1) 'A ~ B' 형태로 붙어 있는 날짜쌍을 모두 찾는다 (공고기간·신청기간 등)
+    in_range: set[int] = set()
+    range_ends: list[date] = []
+    i = 0
+    while i < len(ds) - 1:
         between = text[ds[i].end : ds[i + 1].start]
-        # 사이에 요일·시각 표기가 있어도 접수기간으로 인정
-        cleaned = re.sub(r"[()월화수목금토일\d:시분초\s]", "", between)
-        if _RANGE_SEP.match(between) or cleaned in ("~", "-", "–", "—", ""):
-            if ds[i].value <= ds[i + 1].value:
-                period = (i, i + 1)
-                break
+        # 사이에 요일·시각 표기가 껴 있어도 기간으로 인정한다
+        stripped = re.sub(r"[()월화수목금토일\d:시분초\s]", "", between)
+        if (_RANGE_SEP.match(between) or stripped in ("~", "-", "–", "—", "")) and ds[
+            i
+        ].value <= ds[i + 1].value:
+            in_range.update({i, i + 1})
+            range_ends.append(ds[i + 1].value)
+            i += 2
+            continue
+        i += 1
 
-    if period is None:
-        # 접수기간 표기가 없으면: 가장 이른 날짜를 게시일, 가장 늦은 날짜를 마감일 후보로
-        vals = sorted(d.value for d in ds)
-        return vals[0], (vals[-1] if vals[-1] != vals[0] else None)
+    # 2) 게시일: 기간에 속하지 않은 날짜를 우선하고, 미래 날짜는 쓰지 않는다
+    loose = [ds[k].value for k in range(len(ds)) if k not in in_range]
+    candidates = [v for v in sorted(loose) if v <= ref]
+    if not candidates:
+        candidates = [v for v in sorted(d.value for d in ds) if v <= ref]
+    posted = candidates[0] if candidates else min(d.value for d in ds)
 
-    i, j = period
-    deadline = ds[j].value
-    others = [d.value for k, d in enumerate(ds) if k not in (i, j)]
-    posted = others[0] if others else ds[i].value
+    # 3) 마감일: 기간의 종료일 중 가장 늦은 것, 기간이 없으면 가장 늦은 날짜
+    if range_ends:
+        deadline = max(range_ends)
+    else:
+        latest = max(d.value for d in ds)
+        deadline = latest if latest > posted else None
+    if deadline is not None and deadline < posted:
+        deadline = None
     return posted, deadline
 
 
@@ -105,11 +126,49 @@ _BADGES = re.compile(
 )
 _WS = re.compile(r"\s+")
 
+# 첨부파일 링크를 제목으로 착각하지 않기 위한 판별
+_FILE_EXT = re.compile(
+    r"\.(hwp|hwpx|pdf|docx?|xlsx?|pptx?|zip|jpe?g|png|gif|txt|csv|gul|egg|rar|7z)\b",
+    re.IGNORECASE,
+)
+_FILE_WORDS = re.compile(r"(다운로드|download|바로보기|미리보기|내려받기|파일받기)", re.IGNORECASE)
+
 
 def clean_text(s: str) -> str:
     s = s.replace("\xa0", " ")
     s = _BADGES.sub(" ", s)
-    return _WS.sub(" ", s).strip(" \t\r\n·|/-")
+    s = _WS.sub(" ", s).strip(" \t\r\n·|/-")
+    return _collapse_doubled(s)
+
+
+def _collapse_doubled(s: str) -> str:
+    """같은 제목이 두 번 이어붙은 경우를 되돌린다.
+
+    한 <a> 안에 '말줄임용 span'과 '전체제목 span'이 같이 들어 있는 게시판이 있어
+    텍스트를 뽑으면 제목이 그대로 두 번 나온다.
+    """
+    if len(s) < 12:
+        return s
+    n = len(s)
+    if n % 2 == 0:
+        half = n // 2
+        if s[:half] == s[half:]:
+            return s[:half].strip()
+    # 사이에 공백 하나가 낀 경우
+    half = (n - 1) // 2
+    if n % 2 == 1 and s[:half] == s[half + 1 :] and s[half] == " ":
+        return s[:half].strip()
+    return s
+
+
+def _is_file_anchor(a: Tag, text: str) -> bool:
+    href = (a.get("href") or "") + " " + (a.get("onclick") or "")
+    if _FILE_EXT.search(text) or _FILE_WORDS.search(text):
+        return True
+    if re.search(r"(download|fileDown|file_down|attachfile|/file/)", href, re.IGNORECASE):
+        return True
+    cls = " ".join(a.get("class") or [])
+    return bool(re.search(r"(file|down|attach)", cls, re.IGNORECASE))
 
 
 _CLOSED_WORDS = {"마감", "종료", "접수마감", "모집마감", "완료", "접수종료"}
@@ -127,10 +186,10 @@ def looks_closed(row: Tag) -> bool:
 # ---------------------------------------------------------------- 행 탐지
 
 
-def _leaf_rows(soup: BeautifulSoup) -> list[Tag]:
+def _leaf_rows(soup: BeautifulSoup, tags: list[str]) -> list[Tag]:
     rows = []
-    for tag in soup.find_all(["tr", "li"]):
-        if tag.find(["tr", "li"]):
+    for tag in soup.find_all(tags):
+        if tag.find(tags):
             continue  # 중첩된 상위 행은 건너뜀
         if not tag.find("a"):
             continue
@@ -138,20 +197,17 @@ def _leaf_rows(soup: BeautifulSoup) -> list[Tag]:
     return rows
 
 
-def auto_detect_rows(soup: BeautifulSoup) -> list[Tag]:
+def _best_group(rows_all: list[Tag]) -> list[Tag]:
     groups: dict[int, list[Tag]] = {}
-    parents: dict[int, Tag] = {}
-    for row in _leaf_rows(soup):
+    for row in rows_all:
         parent = row.parent
         if parent is None:
             continue
-        key = id(parent)
-        groups.setdefault(key, []).append(row)
-        parents[key] = parent
+        groups.setdefault(id(parent), []).append(row)
 
     best: list[Tag] = []
     best_score = -1.0
-    for key, rows in groups.items():
+    for rows in groups.values():
         if len(rows) < 3:
             continue
         texts = [r.get_text(" ", strip=True) for r in rows]
@@ -159,7 +215,7 @@ def auto_detect_rows(soup: BeautifulSoup) -> list[Tag]:
         avg_len = sum(len(t) for t in texts) / len(texts)
 
         if dated == 0:
-            # 날짜가 전혀 없는 그룹은 내비게이션일 가능성이 높다.
+            # 날짜가 전혀 없는 그룹은 내비게이션 메뉴일 가능성이 높다.
             # 제목이 충분히 길 때만 후보로 인정한다.
             if avg_len < 15:
                 continue
@@ -170,6 +226,14 @@ def auto_detect_rows(soup: BeautifulSoup) -> list[Tag]:
         if score > best_score:
             best_score, best = score, rows
     return best
+
+
+def auto_detect_rows(soup: BeautifulSoup) -> list[Tag]:
+    """1차로 표(tr)·목록(li) 구조를 찾고, 실패하면 div 카드형까지 넓혀 다시 찾는다."""
+    best = _best_group(_leaf_rows(soup, ["tr", "li"]))
+    if best:
+        return best
+    return _best_group(_leaf_rows(soup, ["tr", "li", "div", "dl", "article"]))
 
 
 # ---------------------------------------------------------------- 항목
@@ -207,10 +271,14 @@ def _pick_title(row: Tag, inst: Institution) -> str:
     best = ""
     for a in row.find_all("a"):
         t = clean_text(a.get_text(" "))
-        # title 속성이 더 완전한 경우가 많다
+        # title 속성이 더 완전한 경우가 많다 (목록에서 말줄임된 제목의 원본)
         attr = clean_text(a.get("title") or "")
         if len(attr) > len(t):
             t = attr
+        if not t:
+            continue
+        if _is_file_anchor(a, t):
+            continue  # 첨부파일 링크는 제목이 아니다
         if len(t) > len(best):
             best = t
     if len(best) < 4:
@@ -226,11 +294,14 @@ def _pick_link(row: Tag, inst: Institution) -> str:
     base = inst.base or inst.url
     anchors = row.find_all("a")
 
-    # 1) 정상적인 href
+    # 1) 정상적인 href (첨부파일 링크는 건너뛴다)
     for a in anchors:
         href = (a.get("href") or "").strip()
-        if href and not href.startswith(("javascript:", "#")):
-            return urljoin(base, href)
+        if not href or href.startswith(("javascript:", "#", "mailto:")):
+            continue
+        if _is_file_anchor(a, clean_text(a.get_text(" "))):
+            continue
+        return urljoin(base, href)
 
     # 2) onclick / javascript: 안에서 식별자 추출
     if inst.link_from_onclick:
@@ -248,7 +319,9 @@ def _pick_link(row: Tag, inst: Institution) -> str:
     return inst.url
 
 
-def _pick_dates(row: Tag, inst: Institution) -> tuple[date | None, date | None]:
+def _pick_dates(
+    row: Tag, inst: Institution, today: date | None = None
+) -> tuple[date | None, date | None]:
     posted = deadline = None
 
     if inst.date_selector:
@@ -265,14 +338,18 @@ def _pick_dates(row: Tag, inst: Institution) -> tuple[date | None, date | None]:
                 deadline = ds[-1].value
 
     if posted is None or deadline is None:
-        p, d = split_period(row.get_text(" ", strip=True))
+        p, d = split_period(row.get_text(" ", strip=True), today)
         posted = posted or p
         deadline = deadline or d
     return posted, deadline
 
 
-def parse_html(html: str, inst: Institution) -> list[Notice]:
+def parse_html(html: str, inst: Institution, today: date | None = None) -> list[Notice]:
     soup = BeautifulSoup(html, "lxml")
+
+    # 본문과 무관한 영역은 미리 걷어낸다 (메뉴를 목록으로 오인하는 것을 줄임)
+    for tag in soup.find_all(["script", "style", "nav", "header", "footer", "select"]):
+        tag.decompose()
 
     if inst.row_selector:
         rows = soup.select(inst.row_selector)
@@ -289,7 +366,7 @@ def parse_html(html: str, inst: Institution) -> list[Notice]:
             continue
         seen_titles.add(title)
 
-        posted, deadline = _pick_dates(row, inst)
+        posted, deadline = _pick_dates(row, inst, today)
         out.append(
             Notice(
                 institution_id=inst.id,
@@ -331,7 +408,7 @@ def parse_json(text: str, inst: Institution) -> list[Notice]:
     return out
 
 
-def parse(text: str, inst: Institution) -> list[Notice]:
+def parse(text: str, inst: Institution, today: date | None = None) -> list[Notice]:
     if inst.type == "json":
         return parse_json(text, inst)
-    return parse_html(text, inst)
+    return parse_html(text, inst, today)

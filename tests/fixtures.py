@@ -140,6 +140,58 @@ KSTARTUP = """<html><body><div class="bizpbanc-list"><ul>
     <span>마감일자 2026-09-05</span></div></li>
 </ul></div></body></html>"""
 
+# 산업통상부형: 첨부파일 링크 텍스트가 제목 링크보다 길다 (1차 진단에서 발견된 문제)
+ATTACH_TRAP = """<html><body><table><tbody>
+<tr><td>71310</td>
+    <td><a href="/kor/article/ATCL2826a2625/71310/view">2026년도 산업통상부-에너지공기업 기술나눔</a>
+        <a href="/common/download.do?fid=99231" class="file">
+          2026년도 산업통상부-에너지공기업 기술나눔 공고문.hwpx 다운로드</a></td>
+    <td>산업기술시장혁신과</td><td>2026-09-07</td><td>412</td></tr>
+<tr><td>71307</td>
+    <td><a href="/kor/article/ATCL2826a2625/71307/view">산업융합 규제샌드박스 규제특례 승인</a>
+        <a href="/common/download.do?fid=99228" class="file">
+          산업융합 규제샌드박스 규제특례 승인 공고문.hwpx 다운로드</a></td>
+    <td>산업융합규제샌드박스팀</td><td>2026-09-07</td><td>233</td></tr>
+<tr><td>71304</td>
+    <td><a href="/kor/article/ATCL2826a2625/71304/view">지역산업위기대응 이차보전 지원사업 2차 변경공고</a>
+        <a href="/common/download.do?fid=99225" class="file">
+          2026년도 지역산업위기대응 이차보전 지원사업 2차 변경공고.hwpx 다운로드</a></td>
+    <td>지역경제정책과</td><td>2026-09-04</td><td>877</td></tr>
+</tbody></table></body></html>"""
+
+# 부산테크노파크형 2: 한 <a> 안에 제목 span이 두 개라 제목이 두 번 이어붙는다
+DOUBLED_TITLE = """<html><body><table><tbody>
+<tr><td>4533</td><td><a href="/view?seq=1">
+      <span class="subjectWr">신중년 디지털 전환 지원사업 공고</span><span
+      class="titleHover">신중년 디지털 전환 지원사업 공고</span></a></td>
+    <td>2026.09.07</td></tr>
+<tr><td>4532</td><td><a href="/view?seq=2">
+      <span class="subjectWr">고령친화 서비스 실증 참여기업 모집</span><span
+      class="titleHover">고령친화 서비스 실증 참여기업 모집</span></a></td>
+    <td>2026.09.05</td></tr>
+<tr><td>4531</td><td><a href="/view?seq=3">
+      <span class="subjectWr">클라우드 바우처 3차 공고</span><span
+      class="titleHover">클라우드 바우처 3차 공고</span></a></td>
+    <td>2026.09.02</td></tr>
+</tbody></table></body></html>"""
+
+# 연구개발특구진흥재단형: 공고기간·신청기간 두 개의 기간이 한 행에 있다
+# (1차 진단에서 게시일이 미래 날짜로 잡히던 문제)
+TWO_PERIODS = """<html><body><table><tbody>
+<tr><td>1</td><td>접수중</td>
+    <td><a href="/form.tab?TSK_PBNC_ID=2026-0023">2026년 사회문제해결형 R&amp;BD 지원사업 시행 공고</a></td>
+    <td>2026-08-21 ~ 2026-09-21</td><td>2026-09-10 ~ 2026-09-21</td>
+    <td>김담당</td><td>521</td></tr>
+<tr><td>2</td><td>접수중</td>
+    <td><a href="/form.tab?TSK_PBNC_ID=2026-0024">2026년 실증화 지원 프로그램 공고</a></td>
+    <td>2026-09-01 ~ 2026-10-05</td><td>2026-09-15 ~ 2026-10-05</td>
+    <td>이담당</td><td>318</td></tr>
+<tr><td>3</td><td>접수중</td>
+    <td><a href="/form.tab?TSK_PBNC_ID=2026-0025">2026년 규제샌드박스 컨설팅 지원사업</a></td>
+    <td>2026-09-03 ~ 2026-09-30</td><td>2026-09-08 ~ 2026-09-30</td>
+    <td>박담당</td><td>140</td></tr>
+</tbody></table></body></html>"""
+
 # 게시일 컬럼이 아예 없는 게시판 (고령친화산업지원센터 센터공지 형태)
 NO_DATE = """<html><body><table class="tstyle_list"><tbody>
 <tr><td class="num">15</td><td class="ellipsis">
