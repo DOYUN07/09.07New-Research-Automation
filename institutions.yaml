@@ -1,0 +1,310 @@
+# =============================================================
+#  수집 대상 기관 목록
+#  - enabled: false 로 바꾸면 그 기관은 건너뜁니다.
+#  - 기관을 추가하려면 id / name / url 만 있으면 됩니다.
+#    (선택자를 비워두면 범용 파서가 알아서 목록을 찾습니다)
+#  - status 는 2026-09-07 사전조사 결과입니다:
+#      ok        목록 파싱 확인됨
+#      check     URL은 찾았으나 미검증 — 첫 진단 실행에서 확인 필요
+#      js        JavaScript 렌더링 → 정적 수집 불가
+#      blocked   서버가 봇/데이터센터 IP를 차단
+#      none      지원사업 공고 게시판이 사실상 없음
+# =============================================================
+
+institutions:
+
+  # ---------- 1. 부산 ----------
+  - id: bipa
+    name: 부산정보산업진흥원
+    enabled: true
+    status: ok
+    url: "https://bipa.kr/board/business/list"
+    base: "https://bipa.kr"
+    notes: "구 busanit.or.kr에서 도메인 이전. 목록에 마감기한 컬럼 있음. 채용은 /board/job/list로 분리."
+
+  - id: btp
+    name: 부산테크노파크
+    enabled: true
+    status: ok
+    url: "https://www.btp.or.kr/kor/CMS/Board/Board.do?mCode=MN013"
+    base: "https://www.btp.or.kr/kor/CMS/Board/Board.do"
+    notes: "번호/사업공고명/접수기간/상태/작성자/게시일. 상대경로 href."
+
+  - id: bepa
+    name: 부산경제진흥원
+    enabled: true
+    status: check
+    url: "https://www.bepa.kr/kor/view.do?no=1508"
+    base: "https://www.bepa.kr/kor/"
+    verify_ssl: false
+    notes: "서버가 중간 인증서 체인을 안 보내 SSL 오류 발생 → verify_ssl:false 로 우회. no=1509는 채용이라 제외."
+
+  - id: busan_pass
+    name: 부산사회서비스원
+    enabled: true
+    status: ok
+    url: "https://busan.pass.or.kr/SW_bbs/notice/list.php?zipEncode==u2yPr3BU91vt1drjrMCH9MyMetpSfMvWLME"
+    base: "https://busan.pass.or.kr/SW_bbs/notice/"
+    notes: "URL이 zipEncode 토큰 기반이라 목록의 href를 그대로 따라가야 함. 날짜가 26.08.05 형식(2자리 연도)."
+
+  - id: busan_ngocenter
+    name: 부산시민운동지원센터
+    enabled: true
+    status: ok
+    url: "https://www.ngocenter.or.kr/business/business"
+    base: "https://www.ngocenter.or.kr"
+    notes: "센터사업 게시판. 제목 말머리 [모집]/[안내]/[후기] 혼재."
+
+  # ---------- 2. 타지역 테크노파크·진흥원 ----------
+  - id: gjtp
+    name: 광주테크노파크
+    enabled: true
+    status: ok
+    url: "https://www.gjtp.or.kr/home/business.cs"
+    base: "https://www.gjtp.or.kr/home/business.cs"
+    notes: "한 페이지 30건. 접수기간 컬럼이 '2026-09-03 ~ 2026-09-14' 형태라 마감일 추출 가능. 번호 셀이 th."
+
+  - id: gntp
+    name: 경남테크노파크
+    enabled: true
+    status: ok
+    url: "https://www.gntp.or.kr/biz/apply"
+    base: "https://www.gntp.or.kr"
+    link_from_onclick: "'(/biz/applyInfo/\\d+)'"
+    detail_url: "https://www.gntp.or.kr{id}"
+    notes: "링크가 onclick=goPage(...) 안에 있음. 게시일 컬럼이 없어 접수시작일을 게시일로 사용. 2페이지는 GET 미작동."
+
+  - id: jbtp
+    name: 전북테크노파크
+    enabled: true
+    status: check
+    url: "https://www.jbtp.or.kr/board/list.jbtp?boardId=BBS_0000006&menuCd=DOM_000000102001000000&contentsSid=9"
+    base: "https://www.jbtp.or.kr"
+    notes: "조사 환경에서 호스트 무응답(봇차단 추정). 진단 실행에서 재확인 필요."
+
+  - id: jcia
+    name: 전남정보문화산업진흥원
+    enabled: true
+    status: ok
+    url: "https://www.jcia.or.kr/cf/information/notice/business.do"
+    base: "https://www.jcia.or.kr/cf/information/notice/"
+    link_from_onclick: "fn_view\\('([^']+)'\\)"
+    notes: "상단 '공지' 고정행 6개 있음. 상세는 fn_view() JS 호출이라 상세 URL 조립 불가 → 목록 URL로 대체."
+
+  - id: jbf
+    name: 전남바이오진흥원
+    enabled: true
+    status: ok
+    url: "https://jbf.kr/index.do?contentId=429"
+    base: "https://jbf.kr/"
+    notes: "사업공고가 별도 게시판이 아니라 제목 '[사업공고]' 접두어로 구분. 세션 쿠키 유지 필요."
+
+  - id: gicon
+    name: 광주정보문화산업진흥원
+    enabled: true
+    status: check
+    url: "https://www.gicon.or.kr/menu.es?mid=a10204000000"
+    base: "https://www.gicon.or.kr/"
+    notes: "정부 공통 CMS(board.es). robots 차단으로 미검증. 구 도메인 gitct.or.kr은 폐기됨."
+
+  - id: gjep
+    name: 광주경제진흥상생일자리재단
+    enabled: true
+    status: check
+    url: "https://www.gjep.or.kr/cms/bbs/cms.php?dk_cms=comm_01"
+    base: "https://www.gjep.or.kr"
+    notes: "구 광주경제고용진흥원. robots 전체 Disallow라 미검증. 기업마당에 재게시되므로 대안 있음."
+
+  # ---------- 3. 중앙부처 ----------
+  - id: motir
+    name: 산업통상부
+    enabled: true
+    status: ok
+    url: "https://www.motir.go.kr/kor/article/ATCL2826a2625"
+    base: "https://www.motir.go.kr"
+    notes: "2025-10-01 개편으로 산업통상자원부→산업통상부, motie.go.kr→motir.go.kr. 구 도메인은 인증서 오류."
+
+  - id: mss
+    name: 중소벤처기업부
+    enabled: true
+    status: ok
+    url: "https://www.mss.go.kr/site/smba/ex/bbs/List.do?cbIdx=310"
+    base: "https://www.mss.go.kr"
+    link_from_onclick: "doBbsFView\\('\\d+','(\\d+)'"
+    detail_url: "https://www.mss.go.kr/site/smba/ex/bbs/View.do?cbIdx=310&bcIdx={id}&parentSeq={id}"
+    notes: "목록에 신청기간이 함께 노출되는 드문 사이트. 링크는 onclick의 doBbsFView 2번째 인자."
+
+  - id: mohw
+    name: 보건복지부
+    enabled: true
+    status: ok
+    url: "https://www.mohw.go.kr/board.es?mid=a10501010200&bid=0003&cg_code=C01"
+    base: "https://www.mohw.go.kr"
+    notes: "공모/모집 공고와 행정처분·법인설립 공고가 혼재 → 제외 키워드 필수."
+
+  - id: mafra
+    name: 농림축산식품부
+    enabled: true
+    status: ok
+    url: "https://www.mafra.go.kr/bbs/home/791/artclList.do"
+    base: "https://www.mafra.go.kr"
+    notes: "사람이 보는 /home/5108/subview.do(770KB) 대신 경량 엔드포인트(24KB). 날짜가 td가 아니라 dd.date에 있음."
+
+  - id: iris
+    name: 범부처통합연구지원시스템(IRIS)
+    enabled: true
+    status: ok
+    url: "https://www.iris.go.kr/contents/retrieveBsnsAncmBtinSituListView.do"
+    base: "https://www.iris.go.kr"
+    row_selector: "ul.dbody > li"
+    link_from_onclick: "_view\\('(\\d+)'"
+    detail_url: "https://www.iris.go.kr/contents/retrieveBsnsAncmView.do?ancmId={id}&ancmPrg=ancmIng"
+    notes: "로그인 불필요. 표가 아니라 ul/li 구조라 선택자 지정 필수. GET으로는 '접수중' 탭만 수집됨."
+
+  - id: betterfuture
+    name: 저출산고령사회위원회
+    enabled: true
+    status: ok
+    url: "https://www.betterfuture.go.kr/front/notificationSpace/frontNotice.do"
+    base: "https://www.betterfuture.go.kr"
+    link_from_onclick: "getDetailContent\\('[^']*','(\\d+)'\\)"
+    detail_url: "https://www.betterfuture.go.kr/front/notificationSpace/frontNoticeDetail.do?articleId={id}"
+    notes: "기업 지원사업 공고는 거의 없고 정책 공지 위주. 적합도 낮으나 유지."
+
+  # ---------- 4. 진흥원·공공기관 ----------
+  - id: nipa
+    name: 정보통신산업진흥원(NIPA)
+    enabled: true
+    status: ok
+    url: "https://www.nipa.kr/home/2-2"
+    base: "https://www.nipa.kr"
+    notes: "신규 CMS 경로. 용역 입찰공고가 섞여 들어오므로 제외 키워드 필수. 구 경로는 404."
+
+  - id: nia
+    name: 한국지능정보사회진흥원(NIA)
+    enabled: true
+    status: ok
+    url: "https://www.nia.or.kr/site/nia_kor/ex/bbs/List.do?cbIdx=99835"
+    base: "https://www.nia.or.kr"
+    notes: "엑셀의 '한국정보지능사회진흥원'은 오타. 사업공고 전용 게시판이 없어 공지사항에서 수집."
+
+  - id: innopolis
+    name: 연구개발특구진흥재단
+    enabled: true
+    status: ok
+    url: "https://pms.innopolis.or.kr/an/an_0101/list"
+    base: "https://pms.innopolis.or.kr"
+    notes: "본원 홈페이지는 robots 차단 → 동일 공고를 제공하는 사업관리시스템(PMS) 사용. 공고기간·신청기간 모두 목록에 있음."
+
+  - id: khidi
+    name: 한국보건산업진흥원
+    enabled: true
+    status: ok
+    url: "https://www.khidi.or.kr/board?menuId=MENU01108"
+    base: "https://www.khidi.or.kr"
+    notes: "알림·소식 > 사업공고. 첫 행은 '공지' 고정글."
+
+  - id: khidi_esenior
+    name: 고령친화산업지원센터
+    enabled: true
+    status: check
+    url: "https://www.khidi.or.kr/board?menuId=MENU00325&siteId=SITE00003"
+    base: "https://www.khidi.or.kr"
+    notes: "KHIDI 산하 센터(/esenior)로 독립 도메인 없음. 센터 전용 공고게시판은 2021년 테스트글 1건뿐이라 센터공지를 사용. 목록에 등록일이 없어 게시일 미확인으로 나올 수 있음."
+
+  - id: ssis
+    name: 한국사회보장정보원
+    enabled: true
+    status: ok
+    url: "https://www.ssis.or.kr/lay1/bbs/S1T67C95/A/102/list.do"
+    base: "https://www.ssis.or.kr/lay1/bbs/S1T67C95/A/102/"
+    notes: "지원사업 전용 게시판이 없어 공지사항에서 수집. 페이지 용량 약 2.8MB로 무거움."
+
+  - id: kcpass
+    name: 중앙사회서비스원
+    enabled: true
+    status: check
+    url: "https://www.kcpass.or.kr/board?menuId=MENU002030101000000"
+    base: "https://www.kcpass.or.kr"
+    notes: "지원사업 공고가 일반공지에 섞임. 채용은 MENU002030601000000이므로 제외됨. 미검증."
+
+  - id: kstartup
+    name: K-Startup(창업진흥원)
+    enabled: true
+    status: ok
+    url: "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=list&page=1"
+    base: "https://www.k-startup.go.kr"
+    link_from_onclick: "go_view\\((\\d+)\\)"
+    detail_url: "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn={id}&page=1"
+    notes: "공공데이터포털 오픈API(data.go.kr/data/15125364)로 대체 가능 — DATA_GO_KR_KEY 등록 시 자동 전환."
+
+  - id: socialenterprise
+    name: 한국사회적기업진흥원
+    enabled: true
+    status: blocked
+    url: "https://www.socialenterprise.or.kr/social/board/list.do?m_cd=D019&board_code=BO02&mode=list&pg=1"
+    base: "https://www.socialenterprise.or.kr/social/board/"
+    notes: "엑셀의 '한국사회기술원'은 실존 명칭이 아님 → 이 기관으로 판단. 봇 요청을 400으로 차단하므로 실패 가능성 높음."
+
+  - id: ekr
+    name: 한국농어촌공사
+    enabled: false
+    status: check
+    url: "https://www.ekr.or.kr/planweb/board/list.krc?boardUid=402880317cc0644a017cc5e8000f06b7&contentUid=402880317cc0644a017cc0c9da9f0120"
+    base: "https://www.ekr.or.kr"
+    notes: "기본 비활성. 공지사항이 조달·설계공모 위주라 기업 지원사업 적합도가 낮음. 필요하면 enabled: true로."
+
+  # ---------- 5. 정적 수집이 안 되는 곳 (기본 비활성) ----------
+  - id: kotra
+    name: KOTRA
+    enabled: false
+    status: js
+    url: "https://www.kotra.or.kr/subList/20000020753"
+    base: "https://www.kotra.or.kr"
+    notes: "목록이 JavaScript 렌더링이라 정적 수집 불가. 기업마당(bizinfo)에 재수집되므로 그쪽 경유 권장."
+
+  - id: kiat
+    name: 한국산업기술진흥원(KIAT)
+    enabled: false
+    status: js
+    url: "https://www.kiat.or.kr/front/board/boardContentsListPage.do?board_id=90&MenuId=b159c9dac684471b87256f1e25404f5e"
+    base: "https://www.kiat.or.kr"
+    notes: "엑셀의 '한국산업기술원'은 이 기관으로 판단(KEIT는 R&D 과제공고 중심이고 IRIS로 이관됨). 목록이 JS/POST라 정적 수집 불가."
+
+  - id: kita
+    name: KITA(한국무역협회)
+    enabled: false
+    status: blocked
+    url: "https://www.kita.net/asocBiz/asocBiz/asocBizOngoingList.do"
+    base: "https://www.kita.net"
+    notes: "WAF가 데이터센터 IP를 명시적으로 차단('현재 접속하신 아이피에서는 접속이 불가능합니다'). GitHub Actions에서도 차단될 가능성 높음."
+
+  - id: kdhf
+    name: 한국디지털헬스케어진흥재단
+    enabled: false
+    status: none
+    type: json
+    url: "https://www.kdhf.or.kr/api/public/notices?page=1&limit=20"
+    base: "https://www.kdhf.or.kr"
+    json_items: "notices"
+    json_title: "title"
+    json_date: "created_at"
+    json_id: "id"
+    detail_url: "https://www.kdhf.or.kr/community/notice/{id}"
+    notes: "Next.js SPA. JSON API는 찾았으나 공지 전체가 3건(홈페이지 오픈·채용)뿐이라 지원사업 공고 게시판이 사실상 없음."
+
+  - id: kodhia
+    name: 한국디지털헬스산업협회
+    enabled: false
+    status: none
+    url: "https://kodhia.or.kr/core/?cid=43&cate1=%EC%82%AC%EC%97%85%EA%B3%B5%EA%B3%A0"
+    base: "https://kodhia.or.kr/"
+    notes: "사업공고 카테고리는 있으나 서버 응답이 전부 '데이터가 없습니다'. AJAX 후주입 추정."
+
+  - id: bio_council
+    name: 한국바이오특화센터협의회
+    enabled: false
+    status: none
+    url: ""
+    base: ""
+    notes: "⚠️ 이 명칭의 기관·홈페이지를 찾지 못했습니다. 기관명 확인 필요. 후보: 한국바이오협회(koreabio.org), 한국제약바이오협회(kpbma.or.kr), 또는 개별 지역 바이오특화센터."
