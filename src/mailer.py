@@ -12,9 +12,11 @@ from __future__ import annotations
 import os
 import smtplib
 from email.header import Header
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, formatdate
+from pathlib import Path
 
 
 class MailNotConfigured(Exception):
@@ -31,6 +33,7 @@ def send(
     text_body: str,
     recipients: list[str],
     sender_name: str = "공고 브리핑",
+    attachments: list[Path] | None = None,
 ) -> None:
     user = os.environ.get("SMTP_USER", "").strip()
     password = os.environ.get("SMTP_PASSWORD", "").strip()
@@ -45,13 +48,26 @@ def send(
     if not recipients:
         raise MailNotConfigured("수신자가 없습니다. config.yaml의 recipients를 확인하세요.")
 
-    msg = MIMEMultipart("alternative")
+    body = MIMEMultipart("alternative")
+    body.attach(MIMEText(text_body, "plain", "utf-8"))
+    body.attach(MIMEText(html_body, "html", "utf-8"))
+
+    files = [p for p in (attachments or []) if p and p.exists()]
+    if files:
+        msg = MIMEMultipart("mixed")
+        msg.attach(body)
+        for p in files:
+            part = MIMEApplication(p.read_bytes(), _subtype="octet-stream")
+            # 파일명이 한글이어도 깨지지 않도록 RFC 2231 형식으로 넣는다
+            part.add_header("Content-Disposition", "attachment", filename=("utf-8", "", p.name))
+            msg.attach(part)
+    else:
+        msg = body
+
     msg["Subject"] = Header(subject, "utf-8")
     msg["From"] = formataddr((str(Header(sender_name, "utf-8")), user))
     msg["To"] = ", ".join(recipients)
     msg["Date"] = formatdate(localtime=True)
-    msg.attach(MIMEText(text_body, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     if port == 465:
         with smtplib.SMTP_SSL(host, port, timeout=45) as smtp:

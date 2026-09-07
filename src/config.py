@@ -66,6 +66,10 @@ class Config:
     require_keyword: bool = True
     send_when_empty: bool = True
 
+    # 누적 기록
+    archive_enabled: bool = True
+    archive_attach_weekday: int = 0  # 0=월요일 … 6=일요일
+
     include_keywords: list[str] = field(default_factory=list)
     exclude_keywords: list[str] = field(default_factory=list)
 

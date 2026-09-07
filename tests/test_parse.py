@@ -276,6 +276,58 @@ def main() -> int:
     )
     check("전부 제외", len(kept4), 0)
 
+    # ---------------------------------------------------------------- 누적 기록
+    print("\n[10] 누적 기록 (엑셀)")
+    import tempfile
+    from pathlib import Path
+
+    from src import archive
+
+    src_notices = P(fixtures.BTP, inst(id="btp", name="부산테크노파크", base="https://www.btp.or.kr/"))
+    for n in src_notices:
+        n.matched_keywords = ["테스트"]
+
+    with tempfile.TemporaryDirectory() as td:
+        csvp = Path(td) / "archive.csv"
+        xlsxp = Path(td) / "공고누적.xlsx"
+
+        rows, added = archive.add([], src_notices, date(2026, 9, 7))
+        check("1일차 추가 건수", added, len(src_notices))
+        archive.save_csv(rows, csvp)
+        check("CSV 저장됨", csvp.exists(), True)
+
+        # 같은 공고를 다시 넣어도 늘지 않아야 한다
+        rows2 = archive.load_rows(csvp)
+        check("CSV 다시 읽기", len(rows2), len(src_notices))
+        rows2, added2 = archive.add(rows2, src_notices, date(2026, 9, 8))
+        check("중복은 추가 안 됨", added2, 0)
+        check("누적 건수 유지", len(rows2), len(src_notices))
+
+        made = archive.build_xlsx(rows2, xlsxp)
+        if made is None:
+            print("  (openpyxl 미설치 — 엑셀 검증 건너뜀)")
+        else:
+            from openpyxl import load_workbook
+
+            ws = load_workbook(xlsxp).active
+            check("시트 이름", ws.title, "공고누적")
+            check("데이터 행 수", ws.max_row - 1, len(src_notices))
+            check(
+                "헤더",
+                [c.value for c in ws[1]],
+                ["발견일", "기관", "공고명", "게시일", "마감일", "매칭 키워드", "링크"],
+            )
+            check("'키' 컬럼은 제외", "키" in [c.value for c in ws[1]], False)
+            check("고정틀", ws.freeze_panes, "A2")
+            painted = sum(
+                1
+                for row in ws.iter_rows()
+                for c in row
+                if c.fill and c.fill.fgColor and c.fill.fgColor.rgb not in (None, "00000000")
+            )
+            check("색 채운 셀 없음", painted, 0)
+            check("링크는 하이퍼링크", ws.cell(2, 7).value, "바로가기")
+
     print()
     if FAILS:
         print(f"실패 {len(FAILS)}건")
