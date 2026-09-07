@@ -1,9 +1,9 @@
-name: 매일 공고 브리핑
+name: 평일 공고 브리핑
 
 on:
   schedule:
-    # UTC 23:00 = 한국시간 08:00 (다음 날)
-    - cron: "0 23 * * *"
+    # UTC 01:00 = 한국시간 10:00 · 요일 1-5 = 월~금 (주말 제외)
+    - cron: "0 1 * * 1-5"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -55,15 +55,17 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: 발송 이력 커밋
+      - name: 발송 이력·누적 기록 커밋
         if: ${{ !inputs.dry_run }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state/seen.json
+          # state/ 아래 전부 + 저장소 최상단의 누적 엑셀 (엑셀은 주 1회만 바뀝니다)
+          git add -A state/
+          git add -A -- '*.xlsx'
           if git diff --staged --quiet; then
             echo "변경 없음"
           else
-            git commit -m "chore: 발송 이력 갱신 $(date -u +%Y-%m-%d)"
+            git commit -m "chore: 발송 이력·누적 기록 갱신 $(date -u +%Y-%m-%d)"
             git push
           fi
